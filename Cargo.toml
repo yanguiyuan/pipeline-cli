@@ -1,5 +1,5 @@
 [package]
-name = "pipeline"
+name = "pipeline-cli"
 version = "0.1.0"
 edition = "2021"
 authors = ["yanguiyuan 2736635687@qq.com"]
