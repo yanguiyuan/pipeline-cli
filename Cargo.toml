@@ -2,8 +2,9 @@
 name = "pipeline"
 version = "0.1.0"
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+authors = ["yanguiyuan 2736635687@qq.com"]
+description = "A build tools written by rust to build project and execute a serials of task."
+repository = "https://github.com/yanguiyuan/pipeline-cli.git"
 
 [dependencies]
 clap = { version = "4.4.11", features = ["derive"] }
