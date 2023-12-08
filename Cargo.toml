@@ -6,6 +6,9 @@ authors = ["yanguiyuan 2736635687@qq.com"]
 description = "A build tools written by rust to build project and execute a serials of task."
 repository = "https://github.com/yanguiyuan/pipeline-cli.git"
 license = "MIT"
+[[bin]]
+name = "pipeline"
+path = "src/main.rs"
 [dependencies]
 clap = { version = "4.4.11", features = ["derive"] }
 dirs = "5.0.1"
