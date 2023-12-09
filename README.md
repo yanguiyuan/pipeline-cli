@@ -11,6 +11,9 @@ cargo install pipeline-cli
 - step
 - cmd
 - workspace
+- if(condition) 将can_do状态置为condition状态
+- else()将can_do状态取反
+- endif()将can_do状态置为true
 ### Examples
 需要在项目目录下添加一个名为pipeline.kts的文件，文件语法采用kotlin dsl语法，仅支持函数使用内建函数进行调用
 
@@ -44,17 +47,21 @@ pipeline("hz"){
     }
 }
 ```
-执行Pipeline dev下的Step web相关命令：
+1.执行Pipeline dev下的Step web相关命令：
+
 ```powershell
 pipeline run dev.web
 或者运行dev下的所有step
 pipeline run dev
 ```
-列出所有的任务
+![img.png](assets/img.png)
+2.列出所有的任务
+
 ```powershell
 pipeline list
 ```
-初始化项目使用模板
+3.初始化项目使用模板
+
 ```powershell
 pipeline init -t <template_name>
 //或者
@@ -62,15 +69,18 @@ pipeline init --template <template_name>
 //例如
 pipeline init -t hertz-vue
 ```
-列出所有可用的模版（模版存放在用户目录的.pipeline目录下，可能需要你手动创建目录）
+4.列出所有可用的模版（模版存放在用户目录的.pipeline目录下，可能需要你手动创建目录）
+
 ```powershell
 pipeline template
 ```
-将当前项目中的pipeline.kts保存为模版
+5.将当前项目中的pipeline.kts保存为模版
+
 ```powershell
 pipeline template -a/--add <template_name>
 ```
-移除指定模版
+6.移除指定模版
+
 ```powershell
 pipeline template -r/--remove <template_name>
 ```

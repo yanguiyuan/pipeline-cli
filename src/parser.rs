@@ -69,7 +69,7 @@ impl Parser{
             self.pos_forward(1);
             return Some(Argument::StringArgument(s.clone()));
         }
-        if let Some(Token::Identifier(i))=self.token_stream.borrow().get(self.pos.get()){
+        if let Some(Token::Identifier(_))=self.token_stream.borrow().get(self.pos.get()){
             let fc=self.parse_function_call();
             return Some(Argument::FunctionCallArgument(Box::new(fc)));
         }
@@ -100,6 +100,7 @@ impl Parser{
         }
         return None
     }
+    #[allow(unused)]
     fn consume_brace_left(&self){
         if let Token::BraceLeft= self.token_stream.borrow().get(self.pos.get()).expect("缺少'{'"){
             self.pos_forward(1);

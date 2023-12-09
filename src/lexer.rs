@@ -14,26 +14,21 @@ impl Lexer{
         return Ok(Self{  token_stream: RefCell::new(vec![]), chars: script.chars().collect(), pos: Cell::new(0) })
     }
     pub fn tokenize(&self)->Result<Vec<Token>,String>{
-        loop {
-            match self.peek(){
-                Some(char)=>{
-                    match char{
-                        'a'..='z'|'A'..='Z'=>{
-                            self.scan_identifier();
-                        }
-                        '\"'=>{
-                            self.scan_string();
-                        }
-                        '('=>{self.token_stream.borrow_mut().push(Token::ParenthesisLeft);self.next();}
-                        ')'=>{self.token_stream.borrow_mut().push(Token::ParenthesisRight);self.next();}
-                        '{'=>{self.token_stream.borrow_mut().push(Token::BraceLeft);self.next();}
-                        '}'=>{self.token_stream.borrow_mut().push(Token::BraceRight);self.next();}
-                        '.'=>{self.token_stream.borrow_mut().push(Token::Dot);self.next();}
-                        '\r'|'\n'|' '=>{self.next();}
-                        b=>{return Err(format!("未定义的符号‘{b}’"))}
-                    }
+        while let Some(char)= self.peek(){
+            match char{
+                'a'..='z'|'A'..='Z'=>{
+                    self.scan_identifier();
                 }
-                None=>{break}
+                '\"'=>{
+                    self.scan_string();
+                }
+                '('=>{self.token_stream.borrow_mut().push(Token::ParenthesisLeft);self.next();}
+                ')'=>{self.token_stream.borrow_mut().push(Token::ParenthesisRight);self.next();}
+                '{'=>{self.token_stream.borrow_mut().push(Token::BraceLeft);self.next();}
+                '}'=>{self.token_stream.borrow_mut().push(Token::BraceRight);self.next();}
+                '.'=>{self.token_stream.borrow_mut().push(Token::Dot);self.next();}
+                '\r'|'\n'|' '=>{self.next();}
+                b=>{return Err(format!("未定义的符号‘{b}’"))}
             }
         }
         let tokens=self.token_stream.borrow();
@@ -56,15 +51,13 @@ impl Lexer{
     fn scan_identifier(&self){
         let mut token_value=String::new();
         token_value.push(self.next().unwrap());
-        loop {
-            if let Some(c)=self.peek(){
-                match c {
-                    '0'..='9'|'a'..='z'|'A'..='Z'=>{
-                        token_value.push(c);
-                        self.next();
-                    }
-                    _ => {break}
+        while let Some(c)=self.peek(){
+            match c {
+                '0'..='9'|'a'..='z'|'A'..='Z'=>{
+                    token_value.push(c);
+                    self.next();
                 }
+                _ => {break}
             }
         }
         self.token_stream.borrow_mut().push(Token::Identifier(token_value))
@@ -72,15 +65,13 @@ impl Lexer{
     fn scan_string(&self){
         let mut token_value=String::new();
         self.next();
-        loop {
-            if let Some(c)=self.next(){
-                match c {
-                    '\"'=>{
-                        break
-                    }
-                    _ => {
-                        token_value.push(c);
-                    }
+        while let Some(c)=self.next(){
+            match c {
+                '\"'=>{
+                    break
+                }
+                _ => {
+                    token_value.push(c);
                 }
             }
         }
