@@ -1,6 +1,9 @@
 use std::process::{Command,Stdio};
 use std::io::{BufRead, Read};
 use encoding_rs::*;
+use tokio::sync::oneshot;
+use tokio::sync::oneshot::Sender;
+
 pub fn cmd(work_path:&'static str,command:&String,blank:&'static str){
     let mut child = Command::new("powershell")
         .current_dir(work_path)
@@ -9,42 +12,84 @@ pub fn cmd(work_path:&'static str,command:&String,blank:&'static str){
         .stderr(Stdio::piped())
         .spawn() // 执行命令，并获取输出结果
         .expect("执行命令失败");
-    if let Some(ref mut stdout) = child.stdout {
-        // let reader = BufReader::new(stderr);
-        let mut buffer = Vec::new();
-        // 读取整个 stderr 流到 buffer
-        stdout.read_to_end(&mut buffer).unwrap();
-        // 使用 GBK 解码器将字节解码为 UTF-8
-        let (cow, _encoding_used, had_errors) = GBK.decode(&buffer);
+    let flag=is_system_command(command);
+    let mut stdout =child.stdout.take().expect("Can not get stderr.");
+    let stdout_handle = std::thread::spawn(move || {
+        let mut buffer = [0; 1];
+        let mut bytes =vec![];
+        while let Ok(size)=stdout.read(&mut buffer){
+            if size<=0{
+                break
+            }
+            //如果最后一个字节是中文的第一个字节
+            if buffer[0]== u8::try_from('\n').unwrap(){
+                if flag{
+                    let (cow, _encoding_used, had_errors) = GBK.decode(bytes.as_slice());
+                    if had_errors {
+                        // 如果出现解码错误，可以按照需要进行处理
+                        eprintln!("{}\x1b[31m╰─▶[Sys-Err]:Decoding error.\x1b[0m", blank);
+                        println!("{}\x1b[31m╰─▶[Err]: {}\x1b[0m", blank,String::from_utf8(bytes.clone()).unwrap());
+                    }
+                    for line in cow.lines() {
+                        println!("{}\x1b[32m╰─▶[Output]: {}\x1b[0m", blank, line);
+                    }
+                }else{
+                    println!("{}\x1b[32m╰─▶[Output]: {}\x1b[0m", blank,String::from_utf8(bytes.clone()).unwrap());
+                }
 
-        if had_errors {
-            // 如果出现解码错误，可以按照需要进行处理
-            eprintln!("{}\x1b[31m╰─▶[Sys-Err]:Decoding error.\x1b[0m",blank);
+                bytes.clear();
+            }else{
+                bytes.append(&mut buffer.to_vec());
+            }
+
         }
-        for line in cow.lines() {
-            println!("{}\x1b[32m╰─▶[Output]: {}\x1b[0m",blank ,line);
+        if bytes.len()!=0&&String::from_utf8(bytes.clone()).unwrap()!="\n"{
+            println!("{}\x1b[32m╰─▶[Output]: {}\x1b[0m", blank, String::from_utf8(bytes.clone()).unwrap());
         }
-    }
-    if let Some(ref mut stderr) = child.stderr {
-        // let reader = BufReader::new(stderr);
-        let mut buffer = Vec::new();
-        // 读取整个 stderr 流到 buffer
-        stderr.read_to_end(&mut buffer).unwrap();
+    });
 
-        // 使用 GBK 解码器将字节解码为 UTF-8
-        let (cow, _encoding_used, had_errors) = GBK.decode(&buffer);
+    let mut stderr =child.stderr.take().expect("Can not get stderr.");
+    let stderr_handle = std::thread::spawn(move || {
+        let mut buffer = [0; 1];
+        let mut bytes =vec![];
+        while let Ok(size)=stderr.read(&mut buffer){
+            if size<=0{
+                break
+            }
+            //如果最后一个字节是中文的第一个字节
+            if buffer[0]== u8::try_from('\n').unwrap() {
+                if flag {
+                    let (cow, _encoding_used, had_errors) = GBK.decode(bytes.as_slice());
 
-        if had_errors {
-            // 如果出现解码错误，可以按照需要进行处理
-            eprintln!("{}\x1b[31m╰─▶[Sys-Err]:Decoding error.\x1b[0m",blank);
+                    if had_errors {
+                        // 如果出现解码错误，可以按照需要进行处理
+                        // eprintln!("{}\x1b[31m╰─▶[Sys-Err]:Decoding error.\x1b[0m", blank);
+                        println!("{}\x1b[31m╰─▶[Err]: {}\x1b[0m", blank, String::from_utf8(bytes.clone()).unwrap());
+                    }
+
+                    for line in cow.lines() {
+                        println!("{}\x1b[31m╰─▶[Err]: {}\x1b[0m", blank, line);
+                    }
+                }else {
+                    println!("{}\x1b[31m╰─▶[Err]: {}\x1b[0m", blank,String::from_utf8(bytes.clone()).unwrap());
+                }
+                bytes.clear();
+            }else{
+                bytes.append(&mut buffer.to_vec());
+            }
+
         }
-
-        for line in cow.lines() {
-            println!("{}\x1b[31m╰─▶[Err]: {}\x1b[0m",blank ,line);
+        if bytes.len()!=0{
+            println!("{}\x1b[32m╰─▶[Err]: {}\x1b[0m", blank, String::from_utf8(bytes.clone()).unwrap());
         }
-    }
+    });
+    let stderr_result = stderr_handle.join().expect("The stderr thread panicked");
+    let stdout_result = stdout_handle.join().expect("The stdout thread panicked");
 
-    // 等待子进程结束
-    let status = child.wait().expect("Failed to wait on child");
+    let status = child.wait().expect("Failed to wait for command execution");
 
+}
+fn is_system_command(c:&String)->bool{
+    if c.starts_with("ls"){return true}
+    false
 }
