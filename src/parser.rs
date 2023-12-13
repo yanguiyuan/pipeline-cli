@@ -65,13 +65,21 @@ impl Parser{
         return None
     }
     fn try_consume_argument(&self)->Option<Argument>{
-        if let Some(Token::String(s)) = self.token_stream.borrow().get(self.pos.get()){
-            self.pos_forward(1);
-            return Some(Argument::StringArgument(s.clone()));
-        }
-        if let Some(Token::Identifier(_))=self.token_stream.borrow().get(self.pos.get()){
-            let fc=self.parse_function_call();
-            return Some(Argument::FunctionCallArgument(Box::new(fc)));
+        let cur_pos=self.pos.get();
+        match self.token_stream.borrow().get(cur_pos){
+            Some(Token::String(s))=>{
+                self.pos_forward(1);
+                return Some(Argument::StringArgument(s.clone()));
+            }
+            Some(Token::Identifier(_))=>{
+                let fc=self.parse_function_call();
+                return Some(Argument::FunctionCallArgument(Box::new(fc)));
+            }
+            Some(Token::Comma)=>{
+                self.pos_forward(1);
+                return self.try_consume_argument();
+            }
+            _=>return None
         }
         return None
     }

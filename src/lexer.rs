@@ -27,6 +27,7 @@ impl Lexer{
                 '{'=>{self.token_stream.borrow_mut().push(Token::BraceLeft);self.next();}
                 '}'=>{self.token_stream.borrow_mut().push(Token::BraceRight);self.next();}
                 '.'=>{self.token_stream.borrow_mut().push(Token::Dot);self.next();}
+                ','=>{self.token_stream.borrow_mut().push(Token::Comma);self.next();}
                 '\r'|'\n'|' '=>{self.next();}
                 b=>{return Err(format!("未定义的符号‘{b}’"))}
             }

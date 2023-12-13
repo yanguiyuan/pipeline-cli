@@ -44,11 +44,16 @@ fn try_parse_task(f: &Box<FunctionCall>) ->Option<Task>{
     return Some(task)
 }
 fn try_parse_operation(f: &Box<FunctionCall>)->Option<Operation>{
-    let mut name=String::new();
-    if let Argument::StringArgument(s)=f.args.get(0).unwrap().as_ref(){
-        name=s.clone()
+    let mut params=vec![];
+    let mut i=0;
+    while let Argument::StringArgument(s)=f.args.get(i).unwrap().as_ref(){
+        params.push(s.clone());
+        i+=1;
+        if i>=f.args.len(){
+            break
+        }
     }
-    return Some(Operation::from_str(&f.name,&name))
+    return Some(Operation::from_str(&f.name,params))
 }
 
 impl AST{

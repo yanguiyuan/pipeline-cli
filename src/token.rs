@@ -11,5 +11,6 @@ pub enum  Token{
     SquareBracketRight,
     ParenthesisLeft,
     ParenthesisRight,
-    Dot
+    Dot,
+    Comma
 }

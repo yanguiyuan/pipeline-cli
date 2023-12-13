@@ -1,10 +1,12 @@
 use std::process::{Command,Stdio};
 use std::io::{ Read};
 use std::ops::Deref;
+use std::path::Path;
 use std::sync::{Arc};
 use tokio::sync::RwLock;
 
 use encoding_rs::*;
+use tokio::fs;
 use crate::context::Context;
 use crate::core::pipeline::{PipelineContextValue};
 use crate::core::pipeline::PipelineContextValue::JoinSet;
@@ -19,7 +21,8 @@ pub async fn cmd(command:&str, ctx:Arc<RwLock<dyn crate::context::Context<Pipeli
             .stderr(Stdio::piped())
             .spawn() // 执行命令，并获取输出结果
             .expect("执行命令失败");
-        let flag=is_system_command(command);
+        let flag1=is_system_gbk_output_command(command);
+        let flag2=is_system_gbk_err_command(command);
         let mut stdout =child.stdout.take().expect("Can not get stderr.");
         let mut stderr =child.stderr.take().expect("Can not get stderr.");
         let a=ctx.read().await;
@@ -38,7 +41,7 @@ pub async fn cmd(command:&str, ctx:Arc<RwLock<dyn crate::context::Context<Pipeli
                             }
                             //如果最后一个字节是中文的第一个字节
                             if buffer[0]== u8::try_from('\n').unwrap(){
-                                if flag{
+                                if flag1{
                                     let (cow, _encoding_used, had_errors) = GBK.decode(bytes.as_slice());
                                     if had_errors {
                                         // 如果出现解码错误，可以按照需要进行处理
@@ -74,7 +77,7 @@ pub async fn cmd(command:&str, ctx:Arc<RwLock<dyn crate::context::Context<Pipeli
                             }
                             //如果最后一个字节是中文的第一个字节
                             if buffer[0]== u8::try_from('\n').unwrap() {
-                                if flag {
+                                if flag2 {
                                     let (cow, _encoding_used, had_errors) = GBK.decode(bytes.as_slice());
 
                                     if had_errors {
@@ -116,8 +119,54 @@ pub async fn workspace(path:&str, ctx:Arc<RwLock<dyn Context<PipelineContextValu
     }
 
 }
-fn is_system_command(c: &str) ->bool{
+fn is_system_gbk_output_command(c: &str) ->bool{
     if c.starts_with("ls"){return true}
     if c.starts_with("mkdir"){return true}
     false
+}
+fn is_system_gbk_err_command(c:&str)->bool{
+    if c.starts_with("ls"){return true}
+    if c.starts_with("mkdir"){return true}
+    if c.starts_with("move"){return true}
+    false
+}
+pub async fn move_file(source_path:&str,target_path:&str,ctx:Arc<RwLock<dyn Context<PipelineContextValue>>>){
+    let source = Path::new(source_path);
+    let target = Path::new(target_path);
+    let a=ctx.read().await;
+    if let PipelineContextValue::TaskRef(task)=a.value("task_ref").await.unwrap(){
+        if let PipelineContextValue::RootRef(root)=ctx.read().await.value("root").await.unwrap(){
+            let res=fs::try_exists(target).await.expect("系统错误");
+            if !res{
+                fs::create_dir_all(target.parent().unwrap()).await.expect("创建目录失败");
+            }
+            let res = fs::copy(source, target).await;
+            if let Ok(res)=res{
+                fs::remove_dir(source).await;
+            }
+            match res{
+                Ok(_) => {
+                    let r=fs::remove_file(source).await;
+                    match r{
+                        Ok(_) => {
+                            task.add_output_log(format!("文件{}移动成功!",source_path).as_str()).await;
+                            root.flush().await;
+                        }
+                        Err(e) => {
+                            task.add_err_log(format!("旧文件移除失败：{}",e).as_str()).await;
+                            root.flush().await;
+                        }
+                    }
+                }
+                Err(e) => {
+                    task.add_err_log(format!("文件移动失败：{}",e).as_str()).await;
+                    root.flush().await;
+                }
+            }
+
+        }
+    }
+
+
+
 }
