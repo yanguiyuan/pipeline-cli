@@ -22,6 +22,7 @@ impl Lexer{
                 '\"'=>{
                     self.scan_string();
                 }
+                '`'=>{self.scan_special_string();}
                 '('=>{self.token_stream.borrow_mut().push(Token::ParenthesisLeft);self.next();}
                 ')'=>{self.token_stream.borrow_mut().push(Token::ParenthesisRight);self.next();}
                 '{'=>{self.token_stream.borrow_mut().push(Token::BraceLeft);self.next();}
@@ -69,6 +70,21 @@ impl Lexer{
         while let Some(c)=self.next(){
             match c {
                 '\"'=>{
+                    break
+                }
+                _ => {
+                    token_value.push(c);
+                }
+            }
+        }
+        self.token_stream.borrow_mut().push(Token::String(token_value))
+    }
+    fn scan_special_string(&self){
+        let mut token_value=String::new();
+        self.next();
+        while let Some(c)=self.next(){
+            match c {
+                '`'=>{
                     break
                 }
                 _ => {

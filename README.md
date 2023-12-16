@@ -7,13 +7,14 @@ cargo install pipeline-cli
 
 ### 内建函数
 
-- pipeline(pipeline_name:String,closure:Closure):包裹一组step函数调用
-- step
-- cmd
-- workspace
-- if(condition) 将can_do状态置为condition状态
-- else()将can_do状态取反
-- endif()将can_do状态置为true
+- pipeline(pipeline_name:String,closure:Closure):包裹一组由step和parallel组成的任务
+- step(name:String,closure:Closure) 一个普通的任务，会阻塞后面的任务执行
+- parallel(name:String,closure:Closure) 一个并行的任务，不会阻塞后面的任务执行
+- cmd(command:String) 执行一条powershell命令
+- workspace(path:String) 切换当前命令的工作空间，影响cmd，movefile,replace函数中路径的书写
+- move(source_path:String,target_path:String) 将一个文件从source_path移动到target_path处，如果target_path路径不存在会尝试创建一系列文件夹
+- replace(file_path:String,regex:String,replace_content:String) 通过正则将file_path处的文件中的内容替换成replace_content
+- copy(source_path:String,target_path:String) 将一个文件从source_path复制到target_path处,如果target_path路径不存在会尝试创建一系列文件夹
 ### Examples
 需要在项目目录下添加一个名为pipeline.kts的文件，文件语法采用kotlin dsl语法，仅支持函数使用内建函数进行调用
 
@@ -27,6 +28,11 @@ pipeline("dev"){
     step("tailwind"){
         workspace("./web")
         cmd("npx tailwindcss -i./src/style.css -o./src/output.css --watch")
+    }
+    step("go"){
+        workspace("./test")
+        copy("cmd/main.go","t/main.go")
+        move("t/main.go","cmd/main.go")
     }
 }
 pipeline("hz"){

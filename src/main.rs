@@ -101,6 +101,7 @@ async fn main() {
                 None=>{}
             };
             let token_stream=Lexer::from_path("pipeline.kts").unwrap().tokenize().expect("Token解析失败");
+            println!("{:#?}",token_stream);
             let ast=parser::Parser::from_token_stream(token_stream).generate_ast();
             let mut root=ast.to_pipeline();
             root.set_path(paths);

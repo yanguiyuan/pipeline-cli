@@ -1,8 +1,8 @@
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use crate::builtin::{cmd, move_file, workspace};
+use crate::builtin::{cmd, copy, move_file, replace, workspace};
 use crate::context::Context;
-use crate::core::operation::OperationType::{Cmd, MoveFile, UnKnown, Workspace};
+use crate::core::operation::OperationType::{Cmd, Copy, Move, Replace, UnKnown, Workspace};
 use crate::core::pipeline::PipelineContextValue;
 
 #[derive(Debug,Clone)]
@@ -13,7 +13,9 @@ pub struct Operation{
 pub enum  OperationType{
     Cmd(String),
     Workspace(String),
-    MoveFile(String,String),
+    Move(String,String),
+    Copy(String,String),
+    Replace(String,String,String),
     UnKnown(String,Vec<String>)
 }
 impl OperationType{
@@ -21,7 +23,9 @@ impl OperationType{
         match s {
             "cmd"=>Cmd(p[0].clone()),
             "workspace"=>Workspace(p[0].clone()),
-            "movefile"=>MoveFile(p[0].clone(),p[1].clone()),
+            "move"=>Move(p[0].clone(),p[1].clone()),
+            "replace"=>Replace(p[0].clone(),p[1].clone(),p[2].clone()),
+            "copy"=>Copy(p[0].clone(),p[1].clone()),
             _=>UnKnown(s.to_string(),p)
         }
     }
@@ -43,8 +47,14 @@ impl Operation{
             Workspace(s) => {
                 workspace(s,ctx.clone()).await
             }
-            MoveFile(source,target)=>{
+            Move(source,target)=>{
                 move_file(source,target,ctx).await
+            }
+            Copy(source,target)=>{
+                copy(ctx,source,target).await
+            }
+            Replace(path,regex,replace_content)=>{
+                replace(ctx,path,regex,replace_content).await
             }
             UnKnown(_,_) => {}
         }

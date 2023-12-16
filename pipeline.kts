@@ -1,18 +1,7 @@
 pipeline("dev"){
     step("go"){
         workspace("./test")
-        movefile("a.txt","hello/a.txt")
-    }
-    parallel("echo"){
-         workspace("./test")
-         cmd("go run main.go")
-    }
-}
-
-
-pipeline("prod"){
-    step("go"){
-        workspace("./test")
-        cmd("go run main.go")
+        copy("cmd/main.go","t/main.go")
+        move("t/main.go","cmd/main.go")
     }
 }
