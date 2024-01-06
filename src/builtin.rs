@@ -1,20 +1,22 @@
 use std::process::{Command,Stdio};
 use std::io::{ Read};
-use std::ops::Deref;
+use std::io::ErrorKind::NotFound;
 use std::path::Path;
 use std::sync::{Arc};
+use async_recursion::async_recursion;
 use tokio::sync::RwLock;
 
 use encoding_rs::*;
 use regex::Regex;
-use tokio::fs;
+use tokio::{fs, io};
 use crate::context::{AppContext, Context};
 use crate::core::pipeline::{PipelineContextValue, PipelineRoot};
 use crate::core::pipeline::PipelineContextValue::JoinSet;
 use crate::core::task::Task;
 
 
-pub async fn cmd(command:&str, ctx:Arc<RwLock<dyn crate::context::Context<PipelineContextValue>>>){
+
+pub async fn cmd(command:&str, ctx:Arc<RwLock<dyn Context<PipelineContextValue>>>){
     if let Some(PipelineContextValue::AppCtx(task_ctx))=ctx.read().await.value("task_ctx").await{
         let mut child = Command::new("powershell")
             .current_dir(task_ctx.read().await.value("workspace").unwrap())
@@ -153,8 +155,8 @@ async fn read_task_ctx(ctx:Arc<RwLock<dyn Context<PipelineContextValue>>>)-> Arc
     panic!("task context 缺失")
 }
 async fn read_workspace(ctx:Arc<RwLock<dyn Context<PipelineContextValue>>>)->String{
-    let mut task_ctx=read_task_ctx(ctx).await;
-    let mut app=task_ctx.read().await;
+    let  task_ctx=read_task_ctx(ctx).await;
+    let app=task_ctx.read().await;
     let path=app.value("workspace").unwrap();
     return String::from(path);
 }
@@ -172,17 +174,43 @@ pub async fn replace(ctx:Arc<RwLock<dyn Context<PipelineContextValue>>>,source_p
     task.add_output_log(format!("替换匹配的`{regex}`为`{replace}`成功！").as_str()).await;
     root.flush().await
 }
+
+#[async_recursion]
+pub async fn copy_all(source:&Path,target:&Path)->io::Result<()>{
+    if !source.exists(){
+        return Err(io::Error::new(NotFound,format!("{}不存在",source.to_str().unwrap())));
+    }
+    if !target.exists(){
+        fs::create_dir_all(target.parent().unwrap()).await?;
+    }
+    if source.is_dir(){
+        for entry in source.read_dir().expect("目录读取失败") {
+            if let Ok(entry) = entry {
+                copy_all(entry.path().as_path(),target.join(entry.path().as_path().file_name().unwrap()).as_path()).await?;
+            }
+        }
+    }else{
+        fs::copy(source,target).await?;
+    }
+    return Ok(())
+}
+#[tokio::test]
+async fn test_copy(){
+    copy_all(Path::new("test/x"),Path::new("test/s")).await.unwrap();
+}
 pub async fn copy(ctx:Arc<RwLock<dyn Context<PipelineContextValue>>>,source_path:&str,target_path:&str){
     let workspace=read_workspace(ctx.clone()).await;
     let root=Path::new(workspace.as_str());
     let source = root.join(Path::new(source_path));
     let target = root.join(Path::new(target_path));
-
-    let res=fs::try_exists(target.clone()).await.expect("系统错误");
-    if !res{
-        fs::create_dir_all(target.parent().unwrap()).await.expect("创建目录失败");
+    let res=copy_all(source.as_path(),target.as_path()).await;
+    let task=read_task(ctx.clone()).await;
+    let root=read_root(ctx).await;
+    if let Ok(_) = res {
+        task.add_output_log(format!("文件{}复制成功!",source_path).as_str()).await;
+    }else{
+        task.add_err_log(format!("文件复制失败:{}",res.unwrap_err()).as_str()).await;
     }
-    let res = fs::copy(source.clone(), target.as_path()).await.unwrap();
 }
 pub async fn move_file(source_path:&str,target_path:&str,ctx:Arc<RwLock<dyn Context<PipelineContextValue>>>){
     let workspace=read_workspace(ctx.clone()).await;
@@ -191,17 +219,10 @@ pub async fn move_file(source_path:&str,target_path:&str,ctx:Arc<RwLock<dyn Cont
     let target = root.join(Path::new(target_path));
     let task=read_task(ctx.clone()).await;
     let root=read_root(ctx).await;
-    let res=fs::try_exists(target.clone()).await.expect("系统错误");
-    if !res{
-        fs::create_dir_all(target.parent().unwrap()).await.expect("创建目录失败");
-    }
-    let res = fs::copy(source.clone(), target.as_path()).await;
-    if let Ok(res)=res{
-        let _=fs::remove_dir(source.as_path()).await;
-    }
+    let res = copy_all(source.as_path(), target.as_path()).await;
     match res{
         Ok(_) => {
-            let r=fs::remove_file(source.as_path()).await;
+            let r=fs::remove_dir_all(source.as_path()).await;
             match r{
                 Ok(_) => {
                     task.add_output_log(format!("文件{}移动成功!",source_path).as_str()).await;

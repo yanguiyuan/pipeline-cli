@@ -1,6 +1,6 @@
 [package]
 name = "pipeline-cli"
-version = "0.3.0"
+version = "0.3.1"
 edition = "2021"
 authors = ["yanguiyuan 2736635687@qq.com"]
 description = "A build tools written by rust to build project and execute a serials of task."
@@ -10,6 +10,7 @@ license = "MIT"
 name = "pipeline"
 path = "src/main.rs"
 [dependencies]
+async-recursion = "1.0.5"
 async-trait = "0.1.74"
 clap = { version = "4.4.11", features = ["derive"] }
 dirs = "5.0.1"

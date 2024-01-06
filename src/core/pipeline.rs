@@ -2,7 +2,7 @@ use std::fmt::{Display, Formatter};
 use std::process::Command;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use crate::context::{AppContext, Context, EmptyContext, ValueContext};
+use crate::context::{AppContext, Context, ValueContext};
 use crate::core::pipeline::PipelineContextValue::{ JoinSet, TaskRef};
 use crate::core::task::{Task, TaskType};
 
