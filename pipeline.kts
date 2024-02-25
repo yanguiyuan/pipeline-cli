@@ -1,6 +1,6 @@
 pipeline("dev"){
     step("go"){
-        workspace("./test")
-        copy("x","s")
+        workspace("test")
+        cmd("ls")
     }
 }

@@ -18,9 +18,16 @@ use crate::core::task::Task;
 
 pub async fn cmd(command:&str, ctx:Arc<RwLock<dyn Context<PipelineContextValue>>>){
     if let Some(PipelineContextValue::AppCtx(task_ctx))=ctx.read().await.value("task_ctx").await{
-        let mut child = Command::new("powershell")
+        let mut cmd="powershell";
+        let mut c="/C";
+        let os = std::env::consts::OS;
+        if os=="linux"{
+            cmd="sh";
+            c="-c"
+        }
+        let mut child = Command::new(cmd)
             .current_dir(task_ctx.read().await.value("workspace").unwrap())
-            .args(&["/C", command])
+            .args(&[c, command])
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn() // 执行命令，并获取输出结果
