@@ -61,6 +61,7 @@ pipeline run dev.web
 pipeline run dev
 ```
 ![img.png](assets/img.png)
+
 2.列出所有的任务
 
 ```powershell
