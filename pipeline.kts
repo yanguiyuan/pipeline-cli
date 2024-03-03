@@ -1,5 +1,6 @@
+let c="ls"
 pipeline("dev"){
     step("web"){
-        println("World")
+        cmd(c)
     }
 }

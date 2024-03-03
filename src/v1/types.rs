@@ -94,6 +94,12 @@ impl Dynamic{
             _=>false,
         }
     }
+    pub fn is_string(&self)->bool{
+        match self {
+            Dynamic::String(_) => true,
+            _=>false,
+        }
+    }
     pub fn is_fn_ptr(&self)->bool{
         match self {
             Dynamic::FnPtr(_) => true,
