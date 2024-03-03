@@ -99,6 +99,9 @@ async fn cli(){
             if paths.len()<2{
                 paths.push("all".into());
             }
+            if paths.len()<2{
+                paths.push("all".into());
+            }
             let mut engine=PipelineEngine::default_with_pipeline();
             let script=fs::read_to_string("pipeline.kts").unwrap();
             let stmt=engine.compile_stmt_blocks(script.clone()).unwrap();
@@ -106,21 +109,16 @@ async fn cli(){
             let background=PipelineEngine::background();
             let pipeline=paths.get(0).unwrap().as_str();
             let global=PipelineEngine::context_with_global_state(&background).await;
-            let mut global=global.write().await;
-            global.set_value("path_pipeline",pipeline.into());
-            // let ctx=PipelineEngine::with_value(background,"$path_pipeline",pipeline.into());
-            let task=paths.get(1).unwrap().as_str();
-            // let ctx=PipelineEngine::with_value(ctx,"$path_task",task.into());
-            global.set_value("path_task",task.into());
-            global.set_value("source",script.as_str().into());
-            // let ctx=PipelineEngine::with_value(ctx,"$source",script.as_str().into());
+            //确保global能够在engine执行eval前被释放
+            {
+                let mut global=global.write().await;
+                global.set_value("path_pipeline",pipeline.into());
+                let task=paths.get(1).unwrap().as_str();
+                global.set_value("path_task",task.into());
+                global.set_value("source",script.as_str().into());
+            }
             engine.eval_stmt_blocks_with_context(background,stmt).await.unwrap();
         }
-        // Commands::List=>{
-        //     let token_stream= crate::v1::lexer::Lexer::from_path("pipeline.kts").unwrap().tokenize().expect("Token解析失败");
-        //     let ast=crate::v1::parser::Parser::from_token_stream(token_stream).generate_ast();
-        //     ast.to_pipeline().list()
-        // }
         Commands::Template(args)=>{
             if let Some(add)=&args.add{
                 let home_dir = dirs::home_dir().expect("无法获取用户根目录");

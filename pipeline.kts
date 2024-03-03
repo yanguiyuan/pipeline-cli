@@ -1,2 +1,5 @@
-let a="Hello"
-println(a)
+pipeline("dev"){
+    step("web"){
+        println("World")
+    }
+}

@@ -19,6 +19,7 @@ pub enum Dynamic{
 pub struct FnPtr{
     pub name:String,
     pub params:Vec<Expr>,
+    is_defer:bool,
     pub fn_def:Option<FnDef>
 }
 
@@ -27,8 +28,15 @@ impl FnPtr {
         Self{
             name:name.into(),
             params:vec![],
-            fn_def:None
+            fn_def:None,
+            is_defer:false
         }
+    }
+    pub fn is_defer(&self)->bool{
+        return self.is_defer
+    }
+    pub fn set_defer(&mut self,defer:bool){
+        self.is_defer=defer
     }
     pub fn set_params(&mut self,params:&Vec<Expr>){
         self.params=params.clone();

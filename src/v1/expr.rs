@@ -58,6 +58,7 @@ impl Expr {
             Expr::FnClosure(f,_)=>{
                 let mut ptr=crate::v1::types::FnPtr::new(f.def.name.as_str());
                 ptr.set_fn_def(&f.def);
+                ptr.set_defer(true);
                 Dynamic::FnPtr(Box::new(ptr))
             },
             Expr::FnCall(f,_)=>{

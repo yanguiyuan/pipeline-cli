@@ -134,13 +134,13 @@ impl<'a> PipelineEngine{
         }));
        default.register_fn("step",  |ctx, args|Box::pin (async move {
            let pipeline_name=args.get(0).unwrap().as_string().unwrap();
-           let blocks=args.get(1).unwrap().as_fn_ptr().unwrap().fn_def.unwrap().body;
+           let mut ptr=args.get(1).unwrap().as_fn_ptr().unwrap();
            let mut e=PipelineEngine::default();
            let pipeline=PipelineEngine::context_with_global_value(&ctx,"path_task").await;
            if pipeline==pipeline_name||pipeline.as_str()=="all"{
                let ctx=PipelineEngine::with_value(ctx,"op_join_set",PipelineContextValue::JoinSet(Arc::new(RwLock::new(tokio::task::JoinSet::new()))));
                let ctx=PipelineEngine::with_value(ctx,"$task_name",PipelineContextValue::Local(pipeline_name.into()));
-               e.eval_stmt_blocks_with_context(ctx.clone(),blocks).await.unwrap();
+                ptr.call(&mut e,ctx.clone()).await.unwrap();
                let join_set=PipelineEngine::context_with_join_set(&ctx,"op_join_set").await;
                while let Some(r)=join_set.write().await.join_next().await{
                    r.expect("错误").expect("TODO: panic message");

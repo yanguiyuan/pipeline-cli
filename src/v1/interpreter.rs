@@ -85,6 +85,10 @@ impl Interpreter{
         for d in args{
             if d.is_fn_ptr(){
                 let mut ptr=d.as_fn_ptr().unwrap();
+                if ptr.is_defer(){
+                    v.push(d);
+                    continue
+                }
                 let mut e=PipelineEngine::new_raw();
                 e.set_interpreter(self);
                 let d=ptr.call(&mut e,ctx.clone()).await.unwrap();
@@ -95,7 +99,9 @@ impl Interpreter{
         }
         match func {
             None => {Err(FunctionUndefined(f.name))}
-            Some(func) => {func(ctx,v).await}
+            Some(func) => {
+                func(ctx,v).await
+            }
         }
     }
 }
