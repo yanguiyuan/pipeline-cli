@@ -169,6 +169,11 @@ impl Interpreter{
                 let d=ptr.call(&mut e,ctx.clone()).await.unwrap();
                 v.push(d);
                 continue
+            }else if d.is_variable(){
+                let d=d.as_variable().unwrap();
+                let r=PipelineEngine::context_with_dynamic(&ctx,d.as_str()).await;
+                v.push(r);
+                continue
             }
             v.push(d);
         }
