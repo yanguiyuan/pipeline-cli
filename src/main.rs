@@ -1,21 +1,18 @@
-mod ast;
-mod lexer;
-mod parser;
-mod token;
+
+mod v1;
 mod builtin;
 mod context;
-mod core;
+mod engine;
+mod logger;
 
+use std::any::{Any, TypeId};
 use std::fs;
 use clap::{Args, Parser, Subcommand};
-use crate::lexer::Lexer;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc};
-use tokio::sync::RwLock;
-use crate::context::{Context, EmptyContext, ValueContext};
-use crate::core::pipeline::PipelineContextValue;
+use crate::context::{Context};
+use crate::engine::{PipelineEngine, PipelineResult};
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -32,7 +29,7 @@ enum Commands {
     /// Run special project script.
     Run(RunArgs),
     /// List tasks which can execute.
-    List,
+    // List,
     Template(TemplateArgs),
 }
 #[derive(Args)]
@@ -85,8 +82,7 @@ fn handle_init(t:&str){
     }
 }
 
-#[tokio::main]
-async fn main() {
+async fn cli(){
     let cli=Cli::parse();
     match &cli.command {
         Commands::Init(t) => {
@@ -100,19 +96,31 @@ async fn main() {
                 }
                 None=>{}
             };
-            let token_stream=Lexer::from_path("pipeline.kts").unwrap().tokenize().expect("Token解析失败");
-            let ast=parser::Parser::from_token_stream(token_stream).generate_ast();
-            let mut root=ast.to_pipeline();
-            root.set_path(paths);
-            let  root=Arc::new(root);
-            let ctx:Arc<RwLock<dyn Context<PipelineContextValue>>>=Arc::new(RwLock::new(ValueContext::with_value(Arc::new(RwLock::new(EmptyContext::new())),"root",PipelineContextValue::RootRef(root.clone()))));
-            root.execute(ctx).await;
+            if paths.len()<2{
+                paths.push("all".into());
+            }
+            let mut engine=PipelineEngine::default_with_pipeline();
+            let script=fs::read_to_string("pipeline.kts").unwrap();
+            let stmt=engine.compile_stmt_blocks(script.clone()).unwrap();
+
+            let background=PipelineEngine::background();
+            let pipeline=paths.get(0).unwrap().as_str();
+            let global=PipelineEngine::context_with_global_state(&background).await;
+            let mut global=global.write().await;
+            global.set_value("path_pipeline",pipeline.into());
+            // let ctx=PipelineEngine::with_value(background,"$path_pipeline",pipeline.into());
+            let task=paths.get(1).unwrap().as_str();
+            // let ctx=PipelineEngine::with_value(ctx,"$path_task",task.into());
+            global.set_value("path_task",task.into());
+            global.set_value("source",script.as_str().into());
+            // let ctx=PipelineEngine::with_value(ctx,"$source",script.as_str().into());
+            engine.eval_stmt_blocks_with_context(background,stmt).await.unwrap();
         }
-        Commands::List=>{
-            let token_stream=Lexer::from_path("pipeline.kts").unwrap().tokenize().expect("Token解析失败");
-            let ast=parser::Parser::from_token_stream(token_stream).generate_ast();
-            ast.to_pipeline().list()
-        }
+        // Commands::List=>{
+        //     let token_stream= crate::v1::lexer::Lexer::from_path("pipeline.kts").unwrap().tokenize().expect("Token解析失败");
+        //     let ast=crate::v1::parser::Parser::from_token_stream(token_stream).generate_ast();
+        //     ast.to_pipeline().list()
+        // }
         Commands::Template(args)=>{
             if let Some(add)=&args.add{
                 let home_dir = dirs::home_dir().expect("无法获取用户根目录");
@@ -157,4 +165,9 @@ async fn main() {
             }
         }
     }
+}
+#[tokio::main]
+async fn main() ->PipelineResult<()>{
+    cli().await;
+    Ok(())
 }

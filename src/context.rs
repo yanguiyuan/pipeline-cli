@@ -2,12 +2,17 @@ use std::collections::HashMap;
 use std::sync::{Arc};
 use async_trait::async_trait;
 use tokio::sync::RwLock;
+use crate::engine::PipelineResult;
+use crate::logger::PipelineLogger;
+use crate::v1::position::Position;
+use crate::v1::types::Dynamic;
+
 #[async_trait]
 pub trait Context<T>:Send + Sync{
-    async fn value(&self,key:&str)->Option<T>;
+    async fn value(& self,key:&str)->Option<T>;
 }
 
-pub struct ValueContext<T>{ parent:Arc<RwLock<dyn Context<T>>>, key:&'static str, value:T }
+pub struct ValueContext<T> { parent:Arc<RwLock<dyn Context<T>>>, key:&'static str, value:T }
 
 impl<T:Clone + std::marker::Sync> ValueContext<T> {
     pub fn with_value(ctx: Arc<RwLock<dyn Context<T>>>, key:&'static str, value:T) ->Self{
@@ -44,24 +49,85 @@ impl<T> Context<T> for EmptyContext{
 }
 #[derive(Debug)]
 pub struct AppContext<T>{
-    map:HashMap<&'static str,T>,
+    map:HashMap<String,T>,
 }
+
 impl<T> AppContext<T>{
     pub fn new()->AppContext<T>{
         Self{ map: HashMap::new() }
     }
-    pub fn value(&self,key:&'static str)->Option<&T>{
+    pub fn value(&self,key:& str)->Option<&T>{
         self.map.get(key)
     }
-    pub fn set_value(&mut self, key:&'static str, value:T){
-        self.map.insert(key,value);
+    pub fn set_value(&mut self, key:&str, value:T){
+        self.map.insert(key.into(),value);
     }
 }
-#[test]
-fn test_context(){
-    // let ctx=EmptyContext::new();
-    // let ctx=ValueContext::with_value(ctx,"k1","Hello");
-    // let ctx=ValueContext::with_value(ctx,"k2","Hello2");
-    // let v1=ctx.value("k2").unwrap();
-    // println!("{}",v1)
+#[derive(Debug,Clone)]
+pub enum PipelineContextValue{
+    GlobalState(Arc<RwLock<AppContext<String>>>),
+    JoinSet(Arc<RwLock<tokio::task::JoinSet<PipelineResult<()>>>>),
+    Scope(Arc<RwLock<Scope>>),
+    Position(Position),
+    Local(String),
+    Logger(Arc<RwLock<PipelineLogger>>)
+}
+#[derive(Debug,Clone)]
+pub struct Scope{
+    data:HashMap<String,Dynamic>
+}
+
+impl Scope {
+    pub fn new()->Self{
+        Self{data:HashMap::new()}
+    }
+    pub fn get(&self,key:&str)->Option<&Dynamic>{
+        self.data.get(key)
+    }
+    pub fn set(&mut self,key:&str,value:Dynamic){
+        self.data.insert(key.into(),value);
+    }
+}
+impl From<Position> for PipelineContextValue{
+    fn from(value: Position) -> Self {
+        PipelineContextValue::Position(value)
+    }
+}
+impl<'a> PipelineContextValue{
+    pub fn as_scope(&'a self) ->Option<Arc<RwLock<Scope>>>{
+        match self {
+            PipelineContextValue::Scope(s)=>Some(s.clone()),
+            _=>None
+        }
+    }
+    pub fn as_join_set(&self)->Option<Arc<RwLock<tokio::task::JoinSet<PipelineResult<()>>>>>{
+        match self {
+            PipelineContextValue::JoinSet(j)=>Some(j.clone()),
+            _=>None
+        }
+    }
+    pub fn as_logger(&self)->Option< Arc<RwLock< PipelineLogger>>>{
+        match self {
+            PipelineContextValue::Logger(s)=>Some( s.clone()),
+            _=>None
+        }
+    }
+    pub fn as_global_state(&self)->Option<Arc<RwLock<AppContext<String>>>>{
+        match self {
+            PipelineContextValue::GlobalState(s)=>Some( s.clone()),
+            _=>None
+        }
+    }
+    pub fn as_position(&self)->Option<Position>{
+        match self {
+            PipelineContextValue::Position(s)=>Some( s.clone()),
+            _=>None
+        }
+    }
+    pub fn as_local(&self)->Option<String>{
+        match self {
+            PipelineContextValue::Local(s)=>Some( s.clone()),
+            _=>None
+        }
+    }
 }

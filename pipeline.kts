@@ -1,6 +1,2 @@
-pipeline("dev"){
-    step("go"){
-        workspace("test")
-        cmd("ls")
-    }
-}
+let a="Hello"
+println(a)
