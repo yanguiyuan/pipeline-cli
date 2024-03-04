@@ -5,6 +5,7 @@ use crate::v1::position::{NONE, Position};
 pub enum Stmt{
     FnCall(Box<FnCallExpr>,Position),
     Let(Box<(String,Expr)>,Position),
+    Return(Box<Expr>,Position),
     Noop
 }
 
@@ -21,6 +22,9 @@ impl Stmt{
                 pos.clone()
             }
             Stmt::Let(_,pos)=>{
+                pos.clone()
+            }
+            Stmt::Return(_,pos)=>{
                 pos.clone()
             }
             Stmt::Noop => {

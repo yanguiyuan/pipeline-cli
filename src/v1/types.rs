@@ -1,7 +1,7 @@
 use std::fmt::{Display, Formatter};
-use std::ptr::write;
+use std::ops::Add;
 use std::sync::{Arc, RwLock};
-use crate::context::{Context, PipelineContextValue};
+use crate::context::{Context, PipelineContextValue, Scope};
 use crate::engine::{PipelineEngine, PipelineResult};
 use crate::v1::expr::{Expr, FnCallExpr};
 use crate::v1::parser::FnDef;
@@ -84,6 +84,24 @@ impl Display for Dynamic {
             Dynamic::Boolean(b) => {write!(f,"{b}")}
             Dynamic::Variable(a) => {write!(f,"Variable({a})")}
             Dynamic::FnPtr(p)=>write!(f,"function {:}",p.name)
+        }
+    }
+}
+
+impl Add for Dynamic{
+    type Output = Dynamic;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        match self {
+            Dynamic::Integer(i) => {
+                let r=rhs.as_integer().unwrap();
+                Dynamic::Integer(i+r)
+            }
+            Dynamic::Float(f) => {
+                let t=rhs.as_float().unwrap();
+                Dynamic::Float(f+t)
+            }
+            _=>panic!("不能进行相加操作")
         }
     }
 }

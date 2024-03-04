@@ -5,23 +5,24 @@ use crate::v1::stmt::Stmt;
 
 use crate::v1::token::Token;
 use crate::v1::ast::AST;
-use crate::v1::expr::{Expr, FnCallExpr, FnClosureExpr};
+use crate::v1::expr::{Expr, FnCallExpr, FnClosureExpr, Op};
+use crate::v1::expr::Expr::BinaryExpr;
 use crate::v1::parser::ParserError::UnexpectedToken;
 use crate::v1::position::{NONE, Position};
 
 pub struct PipelineParser{
-    token_stream: TokenStream
+    token_stream: TokenStream,
+    fn_lib:Vec<FnDef>
 }
 impl PipelineParser{
     pub fn new()->Self{
-        Self{token_stream:TokenStream::new()}
+        Self{token_stream:TokenStream::new(),fn_lib:vec![]}
     }
     pub fn set_lexer(&mut self,lexer: Lexer){
         self.token_stream.set_lexer(lexer)
     }
-
-    pub fn with_token_stream(token_stream: TokenStream)->Self{
-        Self{ token_stream }
+    pub fn get_fn_lib(&self)->Vec<FnDef>{
+        self.fn_lib.clone()
     }
     pub fn compile_from_token_stream(&mut self)->ParserResult<AST>{
         let stmts=self.parse_stmt_blocks()?;
@@ -40,25 +41,48 @@ impl PipelineParser{
     }
 
     pub fn parse_stmt(&mut self)->ParserResult<Stmt>{
-        let token=self.token_stream.peek();
-        return match token {
-            None => {
-                Ok(Stmt::Noop)
-            }
-            Some((token,pos)) => {
-                match token {
-                    Token::Keyword(k)=>{
-                        match k.as_str() {
-                            "let"=>{
-                                self.parse_let_stmt()
+        loop {
+            let token=self.token_stream.peek();
+            return match token {
+                None => {
+                    Ok(Stmt::Noop)
+                }
+                Some((token0,pos)) => {
+                    match token0 {
+                        Token::Keyword(k)=>{
+                            match k.as_str() {
+                                "let"=>{
+                                    return self.parse_let_stmt()
+                                }
+                                "fn"=>{
+                                    let (fn_def,pos)=self.parse_fn_def()?;
+                                    self.fn_lib.push(fn_def);
+                                    continue
+                                }
+                                "return"=>{
+                                    self.parse_return_stmt()
+                                }
+                                t=>Err(ParserError::UnusedKeyword(t.into()))
                             }
-                            t=>Err(ParserError::UnusedKeyword(t.into()))
-                        }
-                    },
-                    _=>self.parse_expr_stmt()
+                        },
+                        _=>return self.parse_expr_stmt()
+                    }
                 }
             }
         }
+
+    }
+    pub fn parse_return_stmt(&mut self)->ParserResult<Stmt>{
+        let (ret,mut pos)=self.token_stream.next().unwrap();
+        if let Token::Keyword(s)=ret.clone(){
+            if s!="return"{
+                return Err(ParserError::UnusedKeyword(s));
+            }
+            let expr=self.parse_expr()?;
+            pos.add_span(expr.position().span);
+            return Ok(Stmt::Return(Box::new(expr), pos))
+        }
+        return Err(ParserError::UnexpectedToken(ret));
     }
     pub fn parse_let_stmt(&mut self)->ParserResult<Stmt>{
         let (token,mut pos)=self.token_stream.next().unwrap();
@@ -223,20 +247,40 @@ impl PipelineParser{
                 Ok(Expr::StringConstant(s,pos))
             }
             Token::Int(i) => {
-                Ok(Expr::IntConstant(i,pos))
+                let (peek,pos0)=self.token_stream.peek().unwrap();
+                match peek {
+                    Token::Plus => {
+                        self.token_stream.next();
+                        let right=self.parse_expr()?;
+                        let left=Box::new(Expr::IntConstant(i,pos.clone()));
+                        pos.add_span(1+right.position().span);
+                        Ok(BinaryExpr(Op::Plus,left,Box::new(right),pos))
+                    }
+                    _=>Ok(Expr::IntConstant(i,pos))
+                }
+
             }
             Token::Float(f) => {
                 Ok(Expr::FloatConstant(f,pos))
             }
             Token::Identifier(i) => {
                 let (peek,pos1)=self.token_stream.peek().unwrap();
-                if peek==Token::BraceLeft{
-                    let (args,pos2)=self.parse_fn_call_args().unwrap();
-                    let fn_expr=FnCallExpr{name:i,args};
-                    pos.add_span(pos2.span);
-                    return Ok(Expr::FnCall(fn_expr,pos));
+                match peek {
+                    Token::Plus => {
+                        self.token_stream.next();
+                        let right=self.parse_expr()?;
+                        let left=Box::new(Expr::Variable(i,pos.clone()));
+                        pos.add_span(1+right.position().span);
+                        Ok(BinaryExpr(Op::Plus,left,Box::new(right),pos))
+                    }
+                    Token::BraceLeft=>{
+                        let (args,pos2)=self.parse_fn_call_args().unwrap();
+                        let fn_expr=FnCallExpr{name:i,args};
+                        pos.add_span(pos2.span);
+                        return Ok(Expr::FnCall(fn_expr,pos));
+                    }
+                    _=> Ok(Expr::Variable(i,pos))
                 }
-                Ok(Expr::Variable(i,pos))
             }
             _=>Err(ParserError::UnexpectedToken(token))
         }
@@ -252,7 +296,7 @@ impl PipelineParser{
         }
     }
     pub fn from_token_stream(token_stream:TokenStream)->Self{
-        return Self{ token_stream }
+        return Self{ token_stream,fn_lib:vec![] }
     }
 
 }
