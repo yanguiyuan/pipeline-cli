@@ -10,7 +10,7 @@ use crate::v1::ast::AST;
 use crate::v1::expr::FnCallExpr;
 use crate::v1::interpreter::{EvalError, EvalFn, EvalResult, Interpreter};
 use crate::v1::lexer::Lexer;
-use crate::v1::parser::PipelineParser;
+use crate::v1::parser::{FnDef, PipelineParser};
 use crate::v1::position::Position;
 use crate::v1::stmt::Stmt;
 use crate::v1::types::Dynamic;
@@ -18,7 +18,8 @@ use crate::v1::types::Dynamic;
 pub struct PipelineEngine{
     source:String,
     parser:PipelineParser,
-    interpreter:Interpreter
+    interpreter:Interpreter,
+    fn_lib:Vec<FnDef>
 }
 pub type PipelineResult<T>=Result<T,PipelineError>;
 #[derive(Debug,Clone)]
@@ -34,7 +35,7 @@ impl Default for PipelineEngine {
                 if v.is_variable(){
                     let variable=v.as_variable().unwrap();
                     let v=PipelineEngine::context_with_dynamic(&ctx,variable.as_str()).await;
-                    println!("{v}");
+                    print!("{v}");
                     continue
                 }
                 print!("{v}");
@@ -101,10 +102,14 @@ impl<'a> PipelineEngine{
             parser:PipelineParser::new(),
             interpreter:Interpreter::new(),
             source:String::new(),
+            fn_lib:vec![]
         }
     }
     pub fn set_interpreter(&mut self,interpreter: &Interpreter){
         self.interpreter= interpreter.clone()
+    }
+    pub fn get_fn_lib(&self)->Vec<FnDef>{
+        self.fn_lib.clone()
     }
     pub fn set_source(&mut self,source:&str){
         self.source=source.into();
@@ -240,6 +245,10 @@ impl<'a> PipelineEngine{
         let lexer=Lexer::from_script(script);
         self.parser.set_lexer(lexer);
         let stmts=self.parser.parse_stmt_blocks().unwrap();
+        self.fn_lib=self.parser.get_fn_lib();
+        for lib in &self.fn_lib{
+            self.interpreter.register_script_fn(lib.name.as_str(),lib);
+        }
         return Ok(stmts)
     }
     pub fn register_fn(&mut self,name:&str,func:EvalFn){
@@ -249,9 +258,9 @@ impl<'a> PipelineEngine{
         self.interpreter.eval_stmt(stmt).await.unwrap();
         Ok(())
     }
-    pub async fn eval_stmt_with_context(&mut self,ctx:Arc<RwLock<dyn Context<PipelineContextValue>>>,stmt:Stmt)->PipelineResult<()>{
-        self.interpreter.eval_stmt_with_context(ctx,stmt).await.unwrap();
-        Ok(())
+    pub async fn eval_stmt_with_context(&mut self,ctx:Arc<RwLock<dyn Context<PipelineContextValue>>>,stmt:Stmt)->PipelineResult<Dynamic>{
+        let a=self.interpreter.eval_stmt_with_context(ctx,stmt).await.unwrap();
+        Ok(a)
     }
     pub async fn eval_stmt_blocks(&mut self,stmts:Vec<Stmt>)->PipelineResult<()>{
         for stmt in stmts{
@@ -261,7 +270,11 @@ impl<'a> PipelineEngine{
     }
     pub async fn eval_stmt_blocks_with_context(&mut self,ctx:Arc<RwLock<dyn Context<PipelineContextValue>>>,stmts:Vec<Stmt>)->PipelineResult<Dynamic>{
         for stmt in stmts{
-            self.eval_stmt_with_context(ctx.clone(),stmt).await?;
+            let r=self.eval_stmt_with_context(ctx.clone(),stmt).await?;
+            if let Dynamic::Unit=r{
+                continue
+            }
+            return Ok(r);
         }
         Ok(Dynamic::Unit)
     }

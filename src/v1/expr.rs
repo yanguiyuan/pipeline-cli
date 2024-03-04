@@ -10,7 +10,12 @@ pub enum Expr{
     FloatConstant(f64,Position),
     FnClosure(FnClosureExpr,Position),
     FnCall(FnCallExpr,Position),
-    Variable(String,Position)
+    Variable(String,Position),
+    BinaryExpr(Op,Box<Expr>,Box<Expr>,Position)
+}
+#[derive(Debug,Clone)]
+pub enum Op{
+    Plus
 }
 #[derive(Debug,Clone)]
 pub struct FnCallExpr{
@@ -36,6 +41,7 @@ impl Expr {
             Expr::Variable(_, pos) => {pos.clone()}
             Expr::FnClosure(_,pos)=>{pos.clone()}
             Expr::FnCall(_,pos)=>{pos.clone()}
+            Expr::BinaryExpr(_,_,_,pos)=>{pos.clone()}
         }
     }
     pub fn any(&self)-> Box<dyn Any> {

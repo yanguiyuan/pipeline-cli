@@ -13,6 +13,9 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use crate::context::{Context};
 use crate::engine::{PipelineEngine, PipelineResult};
+use crate::v1::lexer::Lexer;
+use crate::v1::parser::PipelineParser;
+
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -105,7 +108,6 @@ async fn cli(){
             let mut engine=PipelineEngine::default_with_pipeline();
             let script=fs::read_to_string("pipeline.kts").unwrap();
             let stmt=engine.compile_stmt_blocks(script.clone()).unwrap();
-
             let background=PipelineEngine::background();
             let pipeline=paths.get(0).unwrap().as_str();
             let global=PipelineEngine::context_with_global_state(&background).await;
@@ -117,6 +119,7 @@ async fn cli(){
                 global.set_value("path_task",task.into());
                 global.set_value("source",script.as_str().into());
             }
+            // println!("{:#?}",stmt);
             engine.eval_stmt_blocks_with_context(background,stmt).await.unwrap();
         }
         Commands::Template(args)=>{
@@ -167,5 +170,10 @@ async fn cli(){
 #[tokio::main]
 async fn main() ->PipelineResult<()>{
     cli().await;
+    // let script=fs::read_to_string("pipeline.kts").unwrap();
+    // let lexer=Lexer::from_script(script);
+    // let mut parser=PipelineParser::from_token_stream(lexer.into_iter());
+    // let (fn_def,pos)=parser.par
+    // println!("{:#?}",fn_def);
     Ok(())
 }

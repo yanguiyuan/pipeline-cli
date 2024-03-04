@@ -71,7 +71,7 @@ impl Lexer{
             index: 0,
             col: 0,
             row: 0,
-            keywords: vec!["fn","let"],
+            keywords: vec!["fn","let","return"],
         }
     }
     pub fn set_chars(&mut self,chars:Vec<char>){
@@ -83,11 +83,12 @@ impl Lexer{
             match self.current_char() {
                 None => { return None}
                 Some(c) => {
-                    match c {
-                        '0'..='9'|'.'=>{
+                    let peek=self.peek_char().unwrap_or('\0');
+                    match (c,peek) {
+                        ('0'..='9'|'.',_)=>{
                             return self.scan_number()
                         },
-                        'a'..='z'|'A'..='Z'=>{
+                        ('a'..='z'|'A'..='Z',_)=>{
                             let ident= self.scan_identifier();
                             let clone=ident.clone().unwrap();
                             let ident_str=clone.0.get_identifier_value();
@@ -96,47 +97,57 @@ impl Lexer{
                             }
                             return ident
                         },
-                        '('=>{
+                        ('(',_)=>{
                             let r= Some((Token::BraceLeft,Position::new(self.index,1)));
                             self.next_char();
                             return r
                         },
-                        ')'=>{
+                        (')',_)=>{
                             let r= Some((Token::BraceRight,Position::new(self.index,1)));
                             self.next_char();
                             return r
                         },
-                        '{'=>{
+                        ('{',_)=>{
                             let r= Some((Token::ParenthesisLeft,Position::new(self.index,1)));
                             self.next_char();
                             return r
                         },
-                        '}'=>{
+                        ('}',_)=>{
                             let r= Some((Token::ParenthesisRight,Position::new(self.index,1)));
                             self.next_char();
                             return r
                         }
-                        ':'=>{
+                        (':',_)=>{
                             let r= Some((Token::Colon,Position::new(self.index,1)));
                             self.next_char();
                             return r
                         }
-                        ','=>{
+                        (',',_)=>{
                             let r= Some((Token::Comma,Position::new(self.index,1)));
                             self.next_char();
                             return r
                         }
-                        '='=>{
+                        ('=',_)=>{
                             let r= Some((Token::Assign,Position::new(self.index,1)));
                             self.next_char();
                             return r
                         }
-                        '"'=>{
+                        ('+',_)=>{
+                            let r= Some((Token::Plus,Position::new(self.index,1)));
+                            self.next_char();
+                            return r
+                        }
+                        ('"',_)=>{
                             return self.scan_string()
                         }
-                        ' '|'\n'|'\r'=>{
+                        (' '|'\n'|'\r',_)=>{
                             self.next_char();
                         },
+                        ('/','/')=>{
+                            while self.peek_char()!=Some('\n') {
+                                self.next_char();
+                            }
+                        }
                         _ => {
                             return None
                         }
@@ -223,10 +234,10 @@ impl Lexer{
     }
     pub fn from_path(path:impl AsRef<str>) ->Self{
         let script=fs::read_to_string(path.as_ref()).unwrap();
-        return Self{  chars: script.chars().collect(), index: 0, col: 0, row: 0, keywords: vec!["let","fn"] }
+        return Self{  chars: script.chars().collect(), index: 0, col: 0, row: 0, keywords: vec!["let","fn","return"] }
     }
     pub fn from_script(script:impl AsRef<str>)->Self{
-        return Self{  chars: script.as_ref().chars().collect(), index: 0, col: 0, row: 0, keywords: vec!["let","fn"] }
+        return Self{  chars: script.as_ref().chars().collect(), index: 0, col: 0, row: 0, keywords: vec!["let","fn","return"] }
     }
 
 }
