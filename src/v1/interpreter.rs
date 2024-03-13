@@ -98,6 +98,11 @@ impl Interpreter{
                         let r_r=self.eval_expr(ctx.clone(),*r).await?;
                         return Ok(l_r+r_r)
                     }
+                    Op::Mul=>{
+                        let l_r=self.eval_expr(ctx.clone(),*l).await?;
+                        let r_r=self.eval_expr(ctx.clone(),*r).await?;
+                        return Ok(l_r*r_r)
+                    }
                 }
             }
             _=>Ok(expr.dynamic())

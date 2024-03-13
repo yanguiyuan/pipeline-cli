@@ -137,6 +137,11 @@ impl Lexer{
                             self.next_char();
                             return r
                         }
+                        ('*',_)=>{
+                            let r= Some((Token::Mul,Position::new(self.index,1)));
+                            self.next_char();
+                            return r
+                        }
                         ('"',_)=>{
                             return self.scan_string()
                         }

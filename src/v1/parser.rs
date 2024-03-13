@@ -247,7 +247,7 @@ impl PipelineParser{
                 Ok(Expr::StringConstant(s,pos))
             }
             Token::Int(i) => {
-                let (peek,pos0)=self.token_stream.peek().unwrap();
+                let (peek,pos0)=self.token_stream.peek().unwrap_or((Token::EOF,NONE.clone()));
                 match peek {
                     Token::Plus => {
                         self.token_stream.next();
@@ -255,6 +255,13 @@ impl PipelineParser{
                         let left=Box::new(Expr::IntConstant(i,pos.clone()));
                         pos.add_span(1+right.position().span);
                         Ok(BinaryExpr(Op::Plus,left,Box::new(right),pos))
+                    }
+                    Token::Mul=>{
+                        self.token_stream.next();
+                        let right=self.parse_expr()?;
+                        let left=Box::new(Expr::IntConstant(i,pos.clone()));
+                        pos.add_span(1+right.position().span);
+                        Ok(BinaryExpr(Op::Mul,left,Box::new(right),pos))
                     }
                     _=>Ok(Expr::IntConstant(i,pos))
                 }

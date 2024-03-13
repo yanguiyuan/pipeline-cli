@@ -1,6 +1,5 @@
-let c="ls"
-pipeline("dev"){
-    step("web"){
-        cmd(c)
+pipeline("test"){
+    step("t1"){
+        cmd("echo Hello")
     }
 }
