@@ -1,6 +1,5 @@
-fn add(x:Int,b:Int){
-    println(1+2+3)
-    return x+b
+pipeline("test"){
+    step("t1"){
+        cmd("echo Hello")
+    }
 }
-let a=add(10,2)
-println(a)

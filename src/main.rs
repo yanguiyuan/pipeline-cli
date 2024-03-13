@@ -120,7 +120,7 @@ async fn cli(){
                 global.set_value("source",script.as_str().into());
             }
             // println!("{:#?}",stmt);
-            engine.eval_stmt_blocks_with_context(background,stmt).await.unwrap();
+            engine.eval_stmt_blocks_from_ast_with_context(background,stmt).await.unwrap();
         }
         Commands::Template(args)=>{
             if let Some(add)=&args.add{
@@ -175,5 +175,8 @@ async fn main() ->PipelineResult<()>{
     // let mut parser=PipelineParser::from_token_stream(lexer.into_iter());
     // let (fn_def,pos)=parser.par
     // println!("{:#?}",fn_def);
+    // let mut e=PipelineEngine::default_with_pipeline();
+    // let r=e.eval_expr("3*2+2").await?;
+    // println!("{r}");
     Ok(())
 }

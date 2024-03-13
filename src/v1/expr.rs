@@ -15,7 +15,8 @@ pub enum Expr{
 }
 #[derive(Debug,Clone)]
 pub enum Op{
-    Plus
+    Plus,
+    Mul
 }
 #[derive(Debug,Clone)]
 pub struct FnCallExpr{

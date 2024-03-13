@@ -361,7 +361,7 @@ checksum = "8afb450f006bf6385ca15ef45d71d2288452bc3683ce2e2cacc0d18e4be60b58"
 
 [[package]]
 name = "pipeline-cli"
-version = "0.5.2"
+version = "0.5.3"
 dependencies = [
  "async-recursion",
  "async-trait",

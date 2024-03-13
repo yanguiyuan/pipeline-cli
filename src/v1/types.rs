@@ -1,5 +1,5 @@
 use std::fmt::{Display, Formatter};
-use std::ops::Add;
+use std::ops::{Add, Mul};
 use std::sync::{Arc, RwLock};
 use crate::context::{Context, PipelineContextValue, Scope};
 use crate::engine::{PipelineEngine, PipelineResult};
@@ -49,11 +49,11 @@ impl FnPtr {
         match fn_def {
             None => {
                 let expr=FnCallExpr{ name: self.name.clone(), args: self.params.clone() };
-                engine.eval_fn_call_expr(ctx,expr).await
+                engine.eval_fn_call_expr_from_ast(ctx,expr).await
             },
             Some(f) => {
                 let blocks=f.body;
-                engine.eval_stmt_blocks_with_context(ctx,blocks).await
+                engine.eval_stmt_blocks_from_ast_with_context(ctx,blocks).await
             }
         }
 
@@ -88,6 +88,23 @@ impl Display for Dynamic {
     }
 }
 
+impl Mul for Dynamic{
+    type Output = Dynamic;
+
+    fn mul(self, rhs: Self) -> Self::Output {
+        match self {
+            Dynamic::Integer(i) => {
+                let r=rhs.as_integer().unwrap();
+                Dynamic::Integer(i*r)
+            }
+            Dynamic::Float(f) => {
+                let t=rhs.as_float().unwrap();
+                Dynamic::Float(f*t)
+            }
+            _=>panic!("不能进行相乘操作")
+        }
+    }
+}
 impl Add for Dynamic{
     type Output = Dynamic;
 

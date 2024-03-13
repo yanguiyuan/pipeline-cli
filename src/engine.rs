@@ -7,7 +7,7 @@ use crate::context::{AppContext, Context, EmptyContext, Scope, ValueContext};
 use crate::context::PipelineContextValue;
 use crate::logger::PipelineLogger;
 use crate::v1::ast::AST;
-use crate::v1::expr::FnCallExpr;
+use crate::v1::expr::{Expr, FnCallExpr};
 use crate::v1::interpreter::{EvalError, EvalFn, EvalResult, Interpreter};
 use crate::v1::lexer::Lexer;
 use crate::v1::parser::{FnDef, PipelineParser};
@@ -121,13 +121,15 @@ impl<'a> PipelineEngine{
             let blocks=args.get(1).unwrap().as_fn_ptr().unwrap().fn_def.unwrap().body;
             let mut e=PipelineEngine::default();
             let pipeline=PipelineEngine::context_with_global_value(&ctx,"path_task").await;
-
+            let logger=PipelineEngine::context_with_logger(&ctx,"logger").await;
+            let logger=logger.as_logger().unwrap();
+            logger.write().await.set_parallel(true);
             if pipeline==pipeline_name||pipeline.as_str()=="all"{
                 let join=PipelineEngine::context_with_join_set(&ctx,"join_set").await;
                 join.write().await.spawn(async move{
                     let ctx=PipelineEngine::with_value(ctx,"op_join_set",PipelineContextValue::JoinSet(Arc::new(RwLock::new(tokio::task::JoinSet::new()))));
                     let ctx=PipelineEngine::with_value(ctx,"$task_name",PipelineContextValue::Local(pipeline_name.into()));
-                    e.eval_stmt_blocks_with_context(ctx.clone(),blocks).await.unwrap();
+                    e.eval_stmt_blocks_from_ast_with_context(ctx.clone(),blocks).await.unwrap();
                     let join_set=PipelineEngine::context_with_join_set(&ctx,"op_join_set").await;
                     while let Some(r)=join_set.write().await.join_next().await{
                         r.expect("错误").expect("TODO: panic message");
@@ -164,7 +166,7 @@ impl<'a> PipelineEngine{
             let pipeline=PipelineEngine::context_with_global_value(&ctx,"path_pipeline").await;
             let ctx=PipelineEngine::with_value(ctx,"join_set",PipelineContextValue::JoinSet(Arc::new(RwLock::new(tokio::task::JoinSet::new()))));
             if pipeline==pipeline_name||pipeline=="all"{
-                e.eval_stmt_blocks_with_context(ctx.clone(),blocks).await.unwrap();
+                e.eval_stmt_blocks_from_ast_with_context(ctx.clone(),blocks).await.unwrap();
             }
             let join_set=PipelineEngine::context_with_join_set(&ctx,"join_set").await;
             while let Some(r)=join_set.write().await.join_next().await{
@@ -254,23 +256,36 @@ impl<'a> PipelineEngine{
     pub fn register_fn(&mut self,name:&str,func:EvalFn){
         self.interpreter.register_fn(name,func)
     }
-    pub async fn eval_stmt(&mut self,stmt:Stmt)->PipelineResult<()>{
+    pub async fn eval_stmt_from_ast(&mut self,stmt:Stmt)->PipelineResult<()>{
         self.interpreter.eval_stmt(stmt).await.unwrap();
         Ok(())
     }
-    pub async fn eval_stmt_with_context(&mut self,ctx:Arc<RwLock<dyn Context<PipelineContextValue>>>,stmt:Stmt)->PipelineResult<Dynamic>{
+    pub async fn eval_stmt_from_ast_with_context(&mut self,ctx:Arc<RwLock<dyn Context<PipelineContextValue>>>,stmt:Stmt)->PipelineResult<Dynamic>{
         let a=self.interpreter.eval_stmt_with_context(ctx,stmt).await.unwrap();
         Ok(a)
     }
-    pub async fn eval_stmt_blocks(&mut self,stmts:Vec<Stmt>)->PipelineResult<()>{
+    pub async fn eval_stmt_blocks_from_ast(&mut self,stmts:Vec<Stmt>)->PipelineResult<()>{
         for stmt in stmts{
-            self.eval_stmt(stmt).await?;
+            self.eval_stmt_from_ast(stmt).await?;
         }
         Ok(())
     }
-    pub async fn eval_stmt_blocks_with_context(&mut self,ctx:Arc<RwLock<dyn Context<PipelineContextValue>>>,stmts:Vec<Stmt>)->PipelineResult<Dynamic>{
+    pub async fn eval_expr_from_ast(&mut self,expr:Expr)->PipelineResult<Dynamic>{
+        let ctx=PipelineEngine::background();
+        let a=self.interpreter.eval_expr(ctx,expr).await.unwrap();;
+        return Ok(a)
+    }
+    pub async fn eval_expr(&mut self,script:impl AsRef<str>)->PipelineResult<Dynamic>{
+        let lexer=Lexer::from_script(script);
+        self.parser.set_lexer(lexer);
+        let ast=self.parser.parse_expr().expect("解析错误");
+
+        let r=self.eval_expr_from_ast(ast).await;
+        return r
+    }
+    pub async fn eval_stmt_blocks_from_ast_with_context(&mut self,ctx:Arc<RwLock<dyn Context<PipelineContextValue>>>,stmts:Vec<Stmt>)->PipelineResult<Dynamic>{
         for stmt in stmts{
-            let r=self.eval_stmt_with_context(ctx.clone(),stmt).await?;
+            let r=self.eval_stmt_from_ast_with_context(ctx.clone(),stmt).await?;
             if let Dynamic::Unit=r{
                 continue
             }
@@ -278,7 +293,7 @@ impl<'a> PipelineEngine{
         }
         Ok(Dynamic::Unit)
     }
-    pub async fn eval_fn_call_expr(&mut self,ctx:Arc<RwLock<dyn Context<PipelineContextValue>>>,expr:FnCallExpr)->PipelineResult<Dynamic>{
+    pub async fn eval_fn_call_expr_from_ast(&mut self,ctx:Arc<RwLock<dyn Context<PipelineContextValue>>>,expr:FnCallExpr)->PipelineResult<Dynamic>{
         let r=self.interpreter.eval_fn_call_expr_with_context(ctx,expr).await;
         match r {
             Ok(d) => {Ok(d)}
