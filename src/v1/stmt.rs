@@ -6,6 +6,7 @@ pub enum Stmt{
     FnCall(Box<FnCallExpr>,Position),
     Let(Box<(String,Expr)>,Position),
     Return(Box<Expr>,Position),
+    If(Box<Expr>,Box<Vec<Stmt>>,Position),
     Noop
 }
 
@@ -25,6 +26,9 @@ impl Stmt{
                 pos.clone()
             }
             Stmt::Return(_,pos)=>{
+                pos.clone()
+            }
+            Stmt::If(_,_,pos)=>{
                 pos.clone()
             }
             Stmt::Noop => {

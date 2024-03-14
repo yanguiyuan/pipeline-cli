@@ -8,7 +8,7 @@ use crate::context::{Context, EmptyContext, Scope};
 use crate::context::PipelineContextValue;
 use crate::engine::{PipelineEngine, PipelineResult};
 use crate::v1::expr::{Expr, FnCallExpr, Op};
-use crate::v1::interpreter::EvalError::FunctionUndefined;
+use crate::v1::interpreter::EvalError::{FunctionUndefined, VariableUndefined};
 use crate::v1::parser::FnDef;
 use crate::v1::stmt::Stmt;
 use crate::v1::types::Dynamic;
@@ -39,13 +39,31 @@ impl Interpreter{
             Stmt::FnCall(fc, _) => {
                 self.eval_fn_call_expr(*fc).await?;
             }
-            Stmt::Let(l,pos)=>{
+            Stmt::Let(l,_)=>{
                 let ctx=PipelineEngine::background();
                 self.eval_let_stmt(ctx,l).await?;
             }
-            Stmt::Return(e,pos)=>{
+            Stmt::Return(e,_)=>{
                 let ctx=PipelineEngine::background();
                 return self.eval_expr(ctx, *e).await
+            }
+            Stmt::If(b,blocks,_)=>{
+                let ctx=PipelineEngine::background();
+                let d=self.eval_expr(ctx.clone(),*b).await?;
+                let d=d.as_bool();
+                return match d {
+                    None => {
+                        Err(EvalError::ExpectedDataType("bool".into()))
+                    }
+                    Some(d) => {
+                        if d {
+                            for i in *blocks {
+                                self.eval_stmt_with_context(ctx.clone(), i).await?;
+                            }
+                        }
+                        Ok(Dynamic::Unit)
+                    }
+                }
             }
             Stmt::Noop => {}
         }
@@ -58,11 +76,28 @@ impl Interpreter{
                 let ctx=PipelineEngine::with_value(ctx,"$pos",pos.into());
                 self.eval_fn_call_expr_with_context(ctx,*fc).await?;
             }
-            Stmt::Let(l,pos)=>{
+            Stmt::Let(l,_)=>{
                 self.eval_let_stmt(ctx,l).await?;
             }
-            Stmt::Return(e,pos)=>{
+            Stmt::Return(e,_)=>{
                 return self.eval_expr(ctx, *e).await
+            }
+            Stmt::If(b,blocks,_)=>{
+                let d=self.eval_expr(ctx.clone(),*b).await?;
+                let d=d.as_bool();
+                return match d {
+                    None => {
+                        Err(EvalError::ExpectedDataType("bool".into()))
+                    }
+                    Some(d) => {
+                        if d {
+                            for i in *blocks {
+                                self.eval_stmt_with_context(ctx.clone(), i).await?;
+                            }
+                        }
+                        Ok(Dynamic::Unit)
+                    }
+                }
             }
             Stmt::Noop => {}
         }
@@ -77,7 +112,7 @@ impl Interpreter{
     #[async_recursion::async_recursion]
     pub async fn eval_expr(&mut self,ctx:Arc<RwLock<dyn Context<PipelineContextValue>>>,expr:Expr)->EvalResult<Dynamic>{
         match expr.clone() {
-            Expr::FnCall(f, pos)=>{
+            Expr::FnCall(f, _)=>{
                 let mut ptr=expr.dynamic().as_fn_ptr().unwrap();
                 let mut e=PipelineEngine::default();
                 e.set_interpreter(self);
@@ -87,9 +122,15 @@ impl Interpreter{
                     Err(e) => {Err(EvalError::FunctionUndefined(ptr.name))}
                 }
             }
-            Expr::Variable(i,pos)=>{
-                let d=PipelineEngine::context_with_dynamic(&ctx,i).await;
-                Ok(d)
+            Expr::Variable(i,_)=>{
+                let d=PipelineEngine::context_with_dynamic(&ctx,i.clone()).await;
+                match d {
+                    None => {
+                        Err(VariableUndefined(i))
+                    }
+                    Some(d) => {Ok(d.clone())}
+                }
+
             }
             Expr::BinaryExpr(op,l,r,_)=>{
                 match op {
@@ -116,7 +157,7 @@ impl Interpreter{
     pub async fn eval_fn_call_expr_with_context(&mut self, ctx: Arc<RwLock<dyn Context<PipelineContextValue>>>, f:FnCallExpr) ->EvalResult<Dynamic>{
         let mut v=vec![];
         for e in &f.args{
-            let d=self.eval_expr(ctx.clone(),e.clone()).await.unwrap();
+            let d=self.eval_expr(ctx.clone(),e.clone()).await?;
             if d.is_fn_ptr(){
                 let mut ptr=d.as_fn_ptr().unwrap();
                 if ptr.is_defer(){
@@ -165,5 +206,6 @@ pub type EvalResult<T>=Result<T, EvalError>;
 #[derive(Debug,Clone)]
 pub enum EvalError{
     FunctionUndefined(String),
-    VariableUndefined(String)
+    VariableUndefined(String),
+    ExpectedDataType(String)
 }

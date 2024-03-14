@@ -1,7 +1,7 @@
 use std::fmt::{Display, Formatter};
 use std::ops::{Add, Mul};
-use std::sync::{Arc, RwLock};
-use crate::context::{Context, PipelineContextValue, Scope};
+use std::sync::{Arc};
+use crate::context::{Context, PipelineContextValue};
 use crate::engine::{PipelineEngine, PipelineResult};
 use crate::v1::expr::{Expr, FnCallExpr};
 use crate::v1::parser::FnDef;
@@ -135,12 +135,14 @@ impl Dynamic{
             _=>false,
         }
     }
+    #[allow(unused)]
     pub fn is_integer(&self)->bool{
         match self {
             Dynamic::Integer(_) => true,
             _=>false,
         }
     }
+    #[allow(unused)]
     pub fn is_float(&self)->bool{
         match self {
             Dynamic::Float(_) => true,
@@ -162,6 +164,12 @@ impl Dynamic{
     pub fn as_fn_ptr(&self)->Option<Box<FnPtr>>{
         match self {
             Dynamic::FnPtr(f)=>Some(f.clone()),
+            _=>None
+        }
+    }
+    pub fn as_bool(&self)->Option<bool>{
+        match self {
+            Dynamic::Boolean(i)=>Some(i.clone()),
             _=>None
         }
     }

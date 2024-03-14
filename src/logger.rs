@@ -39,7 +39,7 @@ impl PipelineLogger {
         let task_name=PipelineEngine::context_with_local(ctx,"$task_name").await;
         if !self.contents.contains_key(task_name.as_str()){
             if !self.is_parallel{
-                println!("\x1b[32mRunning Task {}\x1b[0m",task_name);
+                println!("\x1b[31mRunning Task {}\x1b[0m",task_name);
             }
             self.contents.insert(task_name.clone(),vec![]);
         }

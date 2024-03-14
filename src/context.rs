@@ -68,6 +68,7 @@ pub enum PipelineContextValue{
     GlobalState(Arc<RwLock<AppContext<String>>>),
     JoinSet(Arc<RwLock<tokio::task::JoinSet<PipelineResult<()>>>>),
     Scope(Arc<RwLock<Scope>>),
+    Env(Arc<RwLock<HashMap<String,String>>>),
     Position(Position),
     Local(String),
     Logger(Arc<RwLock<PipelineLogger>>)
@@ -93,8 +94,15 @@ impl From<Position> for PipelineContextValue{
         PipelineContextValue::Position(value)
     }
 }
-impl<'a> PipelineContextValue{
-    pub fn as_scope(&'a self) ->Option<Arc<RwLock<Scope>>>{
+impl PipelineContextValue{
+    pub fn as_env(&self)->Option<Arc<RwLock<HashMap<String,String>>>>{
+        match self {
+            PipelineContextValue::Env(e)=>Some(e.clone()),
+            _=>None
+        }
+    }
+
+    pub fn as_scope(&self) ->Option<Arc<RwLock<Scope>>>{
         match self {
             PipelineContextValue::Scope(s)=>Some(s.clone()),
             _=>None

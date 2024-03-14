@@ -24,9 +24,11 @@ pub async fn cmd(command:&str, ctx:Arc<RwLock<dyn Context<PipelineContextValue>>
     let global=PipelineEngine::context_with_global_state(&ctx).await;
     let workspace=global.read().await;
     let workspace=workspace.value("workspace").unwrap();
-
+    let env=PipelineEngine::context_with_env(&ctx).await;
+    let mut env=env.write().await;
     let mut child = Command::new(cmd)
         .current_dir(workspace.as_str())
+        .envs(env.iter())
         .args(&[c, command])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -75,7 +77,7 @@ pub async fn cmd(command:&str, ctx:Arc<RwLock<dyn Context<PipelineContextValue>>
         return Ok(())
     });
     join_set.write().await.spawn(async move{
-        let mut binding = PipelineEngine::context_with_logger(&ctx, "logger").await;
+        let binding = PipelineEngine::context_with_logger(&ctx, "logger").await;
         let  logger=binding.as_logger().unwrap();
         let mut buffer = [0; 1];
         let mut bytes =vec![];

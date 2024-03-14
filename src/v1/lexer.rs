@@ -13,7 +13,6 @@ pub struct Lexer{
 }
 pub struct TokenStream{
     tokenizer:Lexer,
-    index:usize,
     peek:Option<(Token,Position)>
 }
 
@@ -29,7 +28,6 @@ impl TokenStream{
     pub fn new()->Self{
         Self{
             tokenizer:Lexer::new(),
-            index:0,
             peek:None
         }
     }
@@ -58,7 +56,6 @@ impl IntoIterator for Lexer {
 
     fn into_iter(self) -> Self::IntoIter {
         TokenStream{
-            index: 0,
             tokenizer:self,
             peek:None
         }
@@ -78,7 +75,6 @@ impl Lexer{
         self.chars=chars;
     }
     pub fn next(&mut self)->Option<(Token,Position)>{
-        let one=self.chars.get(self.index);
         loop{
             match self.current_char() {
                 None => { return None}
@@ -153,6 +149,13 @@ impl Lexer{
                                 self.next_char();
                             }
                         }
+                        ('/','*')=>{
+                            while self.current_char()!=Some('*')||self.peek_char()!=Some('/') {
+                                self.next_char();
+                            }
+                            self.next_char();
+                            self.next_char();
+                        }
                         _ => {
                             return None
                         }
@@ -170,8 +173,8 @@ impl Lexer{
         self.increase_index();
         c
     }
-    fn current_char(&self)->Option<&char>{
-        self.chars.get(self.index)
+    fn current_char(&self)->Option<char>{
+        self.chars.get(self.index).map(|c|c.clone())
     }
     fn increase_index(&mut self){
         if self.chars.get(self.index).unwrap()==&'\n'{
@@ -186,7 +189,7 @@ impl Lexer{
         let mut pos=Position::with_pos(self.index);
         let mut is_decimal=false;
         while let  Some(c ) =self.current_char(){
-            if c==&'.'&&!is_decimal{
+            if c=='.'&&!is_decimal{
                 v.push(c.clone());
                 self.increase_index();
                 is_decimal=true;
@@ -224,7 +227,7 @@ impl Lexer{
         let mut pos=Position::with_pos(self.index);
         self.increase_index();
         while let  Some(c ) =self.current_char(){
-            if c==&'"'{
+            if c=='"'{
                 break
             }
             v.push(c.clone());
@@ -239,10 +242,10 @@ impl Lexer{
     }
     pub fn from_path(path:impl AsRef<str>) ->Self{
         let script=fs::read_to_string(path.as_ref()).unwrap();
-        return Self{  chars: script.chars().collect(), index: 0, col: 0, row: 0, keywords: vec!["let","fn","return"] }
+        return Self{  chars: script.chars().collect(), index: 0, col: 0, row: 0, keywords: vec!["let","fn","return","if"] }
     }
     pub fn from_script(script:impl AsRef<str>)->Self{
-        return Self{  chars: script.as_ref().chars().collect(), index: 0, col: 0, row: 0, keywords: vec!["let","fn","return"] }
+        return Self{  chars: script.as_ref().chars().collect(), index: 0, col: 0, row: 0, keywords: vec!["let","fn","return","if"] }
     }
 
 }

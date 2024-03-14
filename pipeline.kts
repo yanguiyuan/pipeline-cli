@@ -1,5 +1,6 @@
 pipeline("test"){
     step("t1"){
-        cmd("echo Hello")
+        env("Hello","123456")
+        cmd("echo $Hello")
     }
 }

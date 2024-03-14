@@ -12,9 +12,10 @@ use std::fs::File;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use crate::context::{Context};
-use crate::engine::{PipelineEngine, PipelineResult};
+use crate::engine::{PipelineEngine, PipelineError, PipelineResult};
+use crate::v1::interpreter::EvalError;
 use crate::v1::lexer::Lexer;
-use crate::v1::parser::PipelineParser;
+use crate::v1::parser::{ParseError, PipelineParser};
 
 
 #[derive(Parser)]
@@ -84,7 +85,39 @@ fn handle_init(t:&str){
         }
     }
 }
-
+fn handle_pipeline_err(e:PipelineError){
+    match e {
+        PipelineError::EvalFailed(ee) => {
+            handle_eval_err(ee);
+        }
+        PipelineError::ParseFailed(pe)=>{
+            handle_parse_error(pe);
+        }
+    }
+}
+fn handle_eval_err(e:EvalError){
+    match e {
+        EvalError::FunctionUndefined(name) => {
+            println!("\x1b[31m[Error]:eval failed,function {name} undefined.\x1b[0m")
+        }
+        EvalError::VariableUndefined(name) => {
+            println!("\x1b[31m[Error]:eval failed,variable \"{name}\" undefined.\x1b[0m")
+        }
+        EvalError::ExpectedDataType(s)=>{
+            println!("\x1b[31m[Error]:eval failed,expected type \"{s}\".\x1b[0m")
+        }
+    }
+}
+fn handle_parse_error(e:ParseError){
+    match e {
+        ParseError::UnexpectedToken(t) => {
+            println!("\x1b[31m[Error]:parse failed,due to an unexpected token \"{t:?}\".\x1b[0m")
+        }
+        ParseError::UnusedKeyword(k) => {
+            println!("\x1b[31m[Error]:parse failed,due to an reserved and unimplemented keyword \"{k}\".\x1b[0m")
+        }
+    }
+}
 async fn cli(){
     let cli=Cli::parse();
     match &cli.command {
@@ -107,20 +140,33 @@ async fn cli(){
             }
             let mut engine=PipelineEngine::default_with_pipeline();
             let script=fs::read_to_string("pipeline.kts").unwrap();
-            let stmt=engine.compile_stmt_blocks(script.clone()).unwrap();
-            let background=PipelineEngine::background();
-            let pipeline=paths.get(0).unwrap().as_str();
-            let global=PipelineEngine::context_with_global_state(&background).await;
-            //确保global能够在engine执行eval前被释放
-            {
-                let mut global=global.write().await;
-                global.set_value("path_pipeline",pipeline.into());
-                let task=paths.get(1).unwrap().as_str();
-                global.set_value("path_task",task.into());
-                global.set_value("source",script.as_str().into());
+            let stmt=engine.compile_stmt_blocks(script.clone());
+            match stmt {
+                Ok(stmt) => {
+                    let background=PipelineEngine::background();
+                    let pipeline=paths.get(0).unwrap().as_str();
+                    let global=PipelineEngine::context_with_global_state(&background).await;
+                    //确保global能够在engine执行eval前被释放
+                    {
+                        let mut global=global.write().await;
+                        global.set_value("path_pipeline",pipeline.into());
+                        let task=paths.get(1).unwrap().as_str();
+                        global.set_value("path_task",task.into());
+                        global.set_value("source",script.as_str().into());
+                    }
+                    let r=engine.eval_stmt_blocks_from_ast_with_context(background,stmt).await;
+                    match r {
+                        Ok(_) => {}
+                        Err(e) => {
+                            handle_pipeline_err(e);
+                        }
+                    }
+                }
+                Err(e) => {
+                    handle_pipeline_err(e);
+                }
             }
-            // println!("{:#?}",stmt);
-            engine.eval_stmt_blocks_from_ast_with_context(background,stmt).await.unwrap();
+
         }
         Commands::Template(args)=>{
             if let Some(add)=&args.add{
