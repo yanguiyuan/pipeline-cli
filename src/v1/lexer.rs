@@ -1,6 +1,6 @@
 use std::{fs, io};
 use std::ops::{Add, Deref};
-use crate::v1::position::Position;
+use crate::v1::position::{NONE, Position};
 use crate::v1::token::Token;
 
 #[derive(Debug,Clone)]
@@ -21,7 +21,10 @@ impl Iterator for TokenStream {
     type Item = (Token,Position);
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.next()
+        match self.next() {
+            (Token::EOF,_)=>None,
+            t=>Some(t)
+        }
     }
 }
 impl TokenStream{
@@ -34,19 +37,19 @@ impl TokenStream{
     pub fn set_lexer(&mut self,lexer: Lexer){
         self.tokenizer=lexer;
     }
-    pub fn next(&mut self)->Option<(Token,Position)>{
+    pub fn next(&mut self)->(Token,Position){
         if self.peek.is_some(){
-            return self.peek.take()
+            return self.peek.take().unwrap_or((Token::EOF,NONE.clone()))
         }
-        return self.tokenizer.next()
+        return self.tokenizer.next().unwrap_or((Token::EOF,NONE.clone()))
     }
-    pub fn peek(&mut self)->Option<(Token,Position)>{
+    pub fn peek(&mut self)->(Token,Position){
         if self.peek.is_some(){
-            return self.peek.clone()
+            return self.peek.clone().unwrap()
         }
         let o=self.tokenizer.next();
         self.peek=o.clone();
-        return o
+        return o.unwrap_or((Token::EOF,NONE.clone()))
     }
 }
 
@@ -81,7 +84,15 @@ impl Lexer{
                 Some(c) => {
                     let peek=self.peek_char().unwrap_or('\0');
                     match (c,peek) {
-                        ('0'..='9'|'.',_)=>{
+                        ('.',p) if !p.is_numeric()=>{
+                            let r= Some((Token::Dot,Position::new(self.index,1)));
+                            self.next_char();
+                            return r
+                        }
+                        ('0'..='9'|'.',_) =>{
+                            if c=='.'&&!peek.is_numeric(){
+                                continue
+                            }
                             return self.scan_number()
                         },
                         ('a'..='z'|'A'..='Z',_)=>{
@@ -93,6 +104,7 @@ impl Lexer{
                             }
                             return ident
                         },
+
                         ('(',_)=>{
                             let r= Some((Token::BraceLeft,Position::new(self.index,1)));
                             self.next_char();
@@ -113,6 +125,16 @@ impl Lexer{
                             self.next_char();
                             return r
                         }
+                        ('[',_)=>{
+                            let r= Some((Token::SquareBracketLeft,Position::new(self.index,1)));
+                            self.next_char();
+                            return r
+                        },
+                        (']',_)=>{
+                            let r= Some((Token::SquareBracketRight,Position::new(self.index,1)));
+                            self.next_char();
+                            return r
+                        },
                         (':',_)=>{
                             let r= Some((Token::Colon,Position::new(self.index,1)));
                             self.next_char();
@@ -123,8 +145,24 @@ impl Lexer{
                             self.next_char();
                             return r
                         }
+                        ('=','=')=>{
+                            let r= Some((Token::Equal,Position::new(self.index,1)));
+                            self.next_char();
+                            self.next_char();
+                            return r
+                        }
                         ('=',_)=>{
                             let r= Some((Token::Assign,Position::new(self.index,1)));
+                            self.next_char();
+                            return r
+                        }
+                        ('>',_)=>{
+                            let r= Some((Token::Greater,Position::new(self.index,1)));
+                            self.next_char();
+                            return r
+                        }
+                        ('<',_)=>{
+                            let r= Some((Token::Less,Position::new(self.index,1)));
                             self.next_char();
                             return r
                         }
@@ -133,15 +171,33 @@ impl Lexer{
                             self.next_char();
                             return r
                         }
+                        ('-',_)=>{
+                            let r= Some((Token::Minus,Position::new(self.index,1)));
+                            self.next_char();
+                            return r
+                        }
                         ('*',_)=>{
                             let r= Some((Token::Mul,Position::new(self.index,1)));
                             self.next_char();
                             return r
                         }
-                        ('"',_)=>{
-                            return self.scan_string()
+                        ('%',_)=>{
+                            let r= Some((Token::Mod,Position::new(self.index,1)));
+                            self.next_char();
+                            return r
                         }
-                        (' '|'\n'|'\r',_)=>{
+
+                        ('"',_)=>{
+                            let r= self.scan_string('"');
+                            self.increase_index();
+                            return r
+                        }
+                        ('\'',_)=>{
+                            let r= self.scan_string('\'');
+                            self.increase_index();
+                            return r
+                        }
+                        (' '|'\n'|'\r'|';',_)=>{
                             self.next_char();
                         },
                         ('/','/')=>{
@@ -155,6 +211,11 @@ impl Lexer{
                             }
                             self.next_char();
                             self.next_char();
+                        }
+                        ('/',_)=>{
+                            let r= Some((Token::Div,Position::new(self.index,1)));
+                            self.next_char();
+                            return r
                         }
                         _ => {
                             return None
@@ -222,18 +283,18 @@ impl Lexer{
         pos.set_span(v.len());
         return Some((Token::Identifier(v),pos))
     }
-    fn scan_string(&mut self)->Option<(Token,Position)>{
+    fn scan_string(&mut self,prefix:char)->Option<(Token,Position)>{
         let mut v=String::new();
         let mut pos=Position::with_pos(self.index);
         self.increase_index();
         while let  Some(c ) =self.current_char(){
-            if c=='"'{
+            if c==prefix{
                 break
             }
             v.push(c.clone());
             self.increase_index();
         }
-        self.increase_index();
+
         pos.set_span(v.len()+2);
         return Some((Token::String(v),pos))
     }
@@ -242,10 +303,10 @@ impl Lexer{
     }
     pub fn from_path(path:impl AsRef<str>) ->Self{
         let script=fs::read_to_string(path.as_ref()).unwrap();
-        return Self{  chars: script.chars().collect(), index: 0, col: 0, row: 0, keywords: vec!["let","fn","return","if"] }
+        return Self{  chars: script.chars().collect(), index: 0, col: 0, row: 0, keywords: vec!["let","fn","return","if","while"] }
     }
     pub fn from_script(script:impl AsRef<str>)->Self{
-        return Self{  chars: script.as_ref().chars().collect(), index: 0, col: 0, row: 0, keywords: vec!["let","fn","return","if"] }
+        return Self{  chars: script.as_ref().chars().collect(), index: 0, col: 0, row: 0, keywords: vec!["let","fn","return","if","while"] }
     }
 
 }

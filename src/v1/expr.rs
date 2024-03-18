@@ -11,12 +11,21 @@ pub enum Expr{
     FnClosure(FnClosureExpr,Position),
     FnCall(FnCallExpr,Position),
     Variable(String,Position),
-    BinaryExpr(Op,Box<Expr>,Box<Expr>,Position)
+    BinaryExpr(Op,Box<Expr>,Box<Expr>,Position),
+    Array(Vec<Expr>,Position),
+    Index(String,Box<Expr>,Position)
 }
 #[derive(Debug,Clone)]
 pub enum Op{
     Plus,
-    Mul
+    Minus,
+    Mul,
+    Div,
+    Mod,
+    Greater,
+    Less,
+    Equal,
+
 }
 #[derive(Debug,Clone)]
 pub struct FnCallExpr{
@@ -43,6 +52,8 @@ impl Expr {
             Expr::FnClosure(_,pos)=>{pos.clone()}
             Expr::FnCall(_,pos)=>{pos.clone()}
             Expr::BinaryExpr(_,_,_,pos)=>{pos.clone()}
+            Expr::Array(_,pos)=>{pos.clone()}
+            Expr::Index(_,_,pos)=>{pos.clone()}
         }
     }
     pub fn any(&self)-> Box<dyn Any> {
@@ -73,6 +84,7 @@ impl Expr {
                 ptr.set_params(&f.args);
                 Dynamic::FnPtr(Box::new(ptr))
             }
+
             _=>Dynamic::Unit
         }
     }

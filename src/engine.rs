@@ -1,4 +1,6 @@
 use std::collections::HashMap;
+use std::io;
+use std::io::Read;
 use std::path::Path;
 use std::process::exit;
 use std::sync::{Arc};
@@ -53,10 +55,34 @@ impl Default for PipelineEngine {
             println!();
             Ok(Dynamic::Unit)
         }));
+        e.register_fn("print",|ctx,args|Box::pin(async move {
+            for v in args{
+                if v.is_variable(){
+                    let variable=v.as_variable().unwrap();
+                    let v=PipelineEngine::context_with_dynamic(&ctx,variable.as_str()).await;
+                    match v {
+                        None => {
+                            return Err(VariableUndefined(variable))
+                        }
+                        Some(v) => {
+                            print!("{v}");
+                            continue
+                        }
+                    }
+                }
+                print!("{v}");
+            }
+            Ok(Dynamic::Unit)
+        }));
+        e.register_fn("readLine",|ctx,args|Box::pin(async move {
+            let mut input = String::new();
+            io::stdin().read_line(&mut input).expect("无法读取输入");
+            Ok(Dynamic::String(input))
+        }));
         e.register_fn("cmd",|ctx,args|Box::pin(async move {
             let c=args.get(0).unwrap().as_string().unwrap();
-            cmd(c.as_str(),ctx).await;
-            Ok(Dynamic::Unit)
+            return cmd(c.as_str(),ctx).await;
+
         }));
         e.register_fn("env",|ctx,args|Box::pin(async move {
             let k=args.get(0).unwrap().as_string().unwrap();
@@ -202,7 +228,7 @@ impl PipelineEngine{
         let scope=  ctx.read().await.value("$scope").await.unwrap();
         let scope=scope.as_scope().unwrap();
         let d=scope.read().await;
-        let d=d.get(key.as_ref());
+        let d=d.get(key.as_ref()).await;
         match d {
             None => {None}
             Some(d) => {
@@ -242,8 +268,11 @@ impl PipelineEngine{
         return join.as_local().unwrap()
     }
     pub async fn context_with_env(ctx:&Arc<RwLock<dyn Context<PipelineContextValue>>>)->Arc<RwLock<HashMap<String,String>>>{
-        let mut join =ctx.read().await.value("$env").await.unwrap();
-        return join.as_env().unwrap()
+        let mut join =ctx.read().await.value("$env").await;
+        match join {
+            None => {panic!("未设置$env,影响cmd运行")}
+            Some(j) => {j.as_env().unwrap()}
+        }
     }
     pub fn background()->Arc<RwLock<dyn Context<PipelineContextValue>>>{
         let empty=EmptyContext::new();
@@ -260,6 +289,7 @@ impl PipelineEngine{
         scope.set("true",Dynamic::Boolean(true));
         scope.set("false",Dynamic::Boolean(false));
         let ctx=PipelineEngine::with_value(ctx,"$scope",PipelineContextValue::Scope(Arc::new(RwLock::new(scope))));
+        // let ctx=PipelineEngine::with_value(ctx,"$env",PipelineContextValue::Env(Arc::new(RwLock::new(HashMap::new()))));
 
         return ctx
     }
@@ -273,6 +303,12 @@ impl PipelineEngine{
         self.parser.set_lexer(lexer);
         let a=self.parser.compile_from_token_stream().unwrap();
         Ok(a)
+    }
+    pub fn compile_expr(&mut self,script:impl AsRef<str>)->PipelineResult<Expr>{
+        let lexer=Lexer::from_script(script);
+        self.parser.set_lexer(lexer);
+        let expr=self.parser.parse_expr().unwrap();
+        return Ok(expr)
     }
     #[allow(unused)]
     pub fn compile_stmt(&mut self,script:impl AsRef<str>)->PipelineResult<Stmt>{
@@ -323,8 +359,9 @@ impl PipelineEngine{
     }
     #[allow(unused)]
     pub async fn eval_stmt_blocks_from_ast(&mut self,stmts:Vec<Stmt>)->PipelineResult<()>{
+        let ctx=PipelineEngine::background();
         for stmt in stmts{
-            self.eval_stmt_from_ast(stmt).await?;
+            self.eval_stmt_from_ast_with_context(ctx.clone(),stmt).await?;
         }
         Ok(())
     }
@@ -342,6 +379,22 @@ impl PipelineEngine{
 
         let r=self.eval_expr_from_ast(ast).await;
         return r
+    }
+    #[allow(unused)]
+    pub async fn eval_stmt(&mut self,script:impl AsRef<str>)->PipelineResult<Dynamic>{
+        let lexer=Lexer::from_script(script);
+        self.parser.set_lexer(lexer);
+        let ast=self.parser.parse_stmt().expect("解析错误");
+        let r=self.eval_stmt_from_ast(ast).await;
+        return Ok(Dynamic::Unit)
+    }
+    #[allow(unused)]
+    pub async fn eval_stmt_blocks(&mut self,script:impl AsRef<str>)->PipelineResult<Dynamic>{
+        let lexer=Lexer::from_script(script);
+        self.parser.set_lexer(lexer);
+        let ast=self.parser.parse_stmt_blocks().expect("解析错误");
+        let r=self.eval_stmt_blocks_from_ast(ast).await;
+        return Ok(Dynamic::Unit)
     }
     #[allow(unused)]
     pub async fn eval_stmt_blocks_from_ast_with_context(&mut self,ctx:Arc<RwLock<dyn Context<PipelineContextValue>>>,stmts:Vec<Stmt>)->PipelineResult<Dynamic>{

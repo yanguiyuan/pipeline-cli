@@ -6,6 +6,7 @@ mod engine;
 mod logger;
 
 use std::any::{Any, TypeId};
+use std::collections::HashSet;
 use std::fs;
 use clap::{Args, Parser, Subcommand};
 use std::fs::File;
@@ -141,6 +142,7 @@ async fn cli(){
             let mut engine=PipelineEngine::default_with_pipeline();
             let script=fs::read_to_string("pipeline.kts").unwrap();
             let stmt=engine.compile_stmt_blocks(script.clone());
+            println!("{:?}",stmt);
             match stmt {
                 Ok(stmt) => {
                     let background=PipelineEngine::background();
@@ -216,6 +218,8 @@ async fn cli(){
 #[tokio::main]
 async fn main() ->PipelineResult<()>{
     cli().await;
+    // let ast=PipelineEngine::default().eval_stmt_blocks("a=true;a.println()").await.unwrap();
+    // println!("{:#?}",ast);
     // let script=fs::read_to_string("pipeline.kts").unwrap();
     // let lexer=Lexer::from_script(script);
     // let mut parser=PipelineParser::from_token_stream(lexer.into_iter());

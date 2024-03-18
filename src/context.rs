@@ -1,7 +1,9 @@
 use std::collections::HashMap;
 use std::sync::{Arc};
+use async_recursion::async_recursion;
 use async_trait::async_trait;
 use tokio::sync::RwLock;
+use crate::context;
 use crate::engine::PipelineResult;
 use crate::logger::PipelineLogger;
 use crate::v1::position::Position;
@@ -75,15 +77,29 @@ pub enum PipelineContextValue{
 }
 #[derive(Debug,Clone)]
 pub struct Scope{
+    parent:Option<Arc<RwLock<Scope>>>,
     data:HashMap<String,Dynamic>
 }
 
 impl Scope {
     pub fn new()->Self{
-        Self{data:HashMap::new()}
+        Self{data:HashMap::new(),parent:None}
     }
-    pub fn get(&self,key:&str)->Option<&Dynamic>{
-        self.data.get(key)
+    pub fn set_parent(&mut self,p:Arc<RwLock<Scope>>){self.parent=Some(p)}
+    #[async_recursion]
+    pub async fn get(&self, key:&str) ->Option<Dynamic>{
+        let r=self.data.get(key);
+        match r {
+            None => {
+                if self.parent.is_some(){
+                   let rr=self.parent.clone().unwrap();
+                    let rr=rr.read().await;
+                    return rr.get(key).await
+                }
+                return None
+            }
+            Some(s) => {Some(s.clone())}
+        }
     }
     pub fn set(&mut self,key:&str,value:Dynamic){
         self.data.insert(key.into(),value);

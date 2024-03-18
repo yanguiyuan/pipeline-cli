@@ -29,8 +29,20 @@ pub enum  Token{
     Comma,
     /// +
     Plus,
+    ///-
+    Minus,
     /// *
     Mul,
+    /// /
+    Div,
+    /// %
+    Mod,
+    /// >
+    Greater,
+    /// <
+    Less,
+    /// ==
+    Equal,
     EOF
 }
 
@@ -55,6 +67,12 @@ impl Token {
             Token::Assign=>15,
             Token::Plus=>16,
             Token::Mul=>17,
+            Token::Greater=>18,
+            Token::Less=>19,
+            Token::Equal=>20,
+            Token::Minus=>21,
+            Token::Div=>22,
+            Token::Mod=>23,
         }
     }
     pub fn get_identifier_value(&self)->&str{

@@ -42,41 +42,38 @@ impl PipelineParser{
 
     pub fn parse_stmt(&mut self)->ParseResult<Stmt>{
         loop {
-            let token=self.token_stream.peek();
+            let (token,pos)=self.token_stream.peek();
             return match token {
-                None => {
-                    Ok(Stmt::Noop)
-                }
-                Some((token0,_)) => {
-                    match token0 {
-                        Token::Keyword(k)=>{
-                            match k.as_str() {
-                                "let"=>{
-                                    return self.parse_let_stmt()
-                                }
-                                "fn"=>{
-                                    let (fn_def,pos)=self.parse_fn_def()?;
-                                    self.fn_lib.push(fn_def);
-                                    continue
-                                }
-                                "return"=>{
-                                    self.parse_return_stmt()
-                                }
-                                "if"=>{
-                                    self.parse_if_stmt()
-                                }
-                                t=>Err(ParseError::UnusedKeyword(t.into()))
-                            }
-                        },
-                        _=>return self.parse_expr_stmt()
+                Token::Keyword(k)=>{
+                    match k.as_str() {
+                        "let"=>{
+                            return self.parse_let_stmt()
+                        }
+                        "fn"=>{
+                            let (fn_def,pos)=self.parse_fn_def()?;
+                            self.fn_lib.push(fn_def);
+                            continue
+                        }
+                        "return"=>{
+                            self.parse_return_stmt()
+                        }
+                        "if"=>{
+                            self.parse_if_stmt()
+                        }
+                        "while"=>{
+                            self.parse_while_stmt()
+                        }
+                        t=>Err(ParseError::UnusedKeyword(t.into()))
                     }
-                }
+                },
+                Token::ParenthesisRight=>Ok(Stmt::Noop),
+                _=>return self.parse_expr_stmt()
             }
         }
 
     }
     pub fn parse_if_stmt(&mut self)->ParseResult<Stmt>{
-        let (ret,mut pos)=self.token_stream.next().unwrap();
+        let (ret,mut pos)=self.token_stream.next();
         if let Token::Keyword(s)=ret.clone(){
             if s!="if"{
                 return Err(ParseError::UnusedKeyword(s));
@@ -93,8 +90,26 @@ impl PipelineParser{
         }
         return Err(ParseError::UnexpectedToken(ret));
     }
+    pub fn parse_while_stmt(&mut self)->ParseResult<Stmt>{
+        let (ret,mut pos)=self.token_stream.next();
+        if let Token::Keyword(s)=ret.clone(){
+            if s!="while"{
+                return Err(ParseError::UnusedKeyword(s));
+            }
+            let expr=self.parse_expr()?;
+            pos.add_span(expr.position().span);
+            self.parse_special_token(Token::ParenthesisLeft)?;
+            let blocks=self.parse_stmt_blocks()?;
+            self.parse_special_token(Token::ParenthesisRight)?;
+            for i in &blocks{
+                pos.add_span(i.position().span)
+            }
+            return Ok(Stmt::While(Box::new(expr),Box::new(blocks), pos))
+        }
+        return Err(ParseError::UnexpectedToken(ret));
+    }
     pub fn parse_return_stmt(&mut self)->ParseResult<Stmt>{
-        let (ret,mut pos)=self.token_stream.next().unwrap();
+        let (ret,mut pos)=self.token_stream.next();
         if let Token::Keyword(s)=ret.clone(){
             if s!="return"{
                 return Err(ParseError::UnusedKeyword(s));
@@ -105,10 +120,10 @@ impl PipelineParser{
         }
         return Err(ParseError::UnexpectedToken(ret));
     }
-    pub fn parse_let_stmt(&mut self)->ParseResult<Stmt>{
-        let (token,mut pos)=self.token_stream.next().unwrap();
+     fn parse_let_stmt(&mut self)->ParseResult<Stmt>{
+        let (token,mut pos)=self.token_stream.next();
         if let Token::Keyword(_)= token{
-            let (token1,pos0)=self.token_stream.next().unwrap();
+            let (token1,pos0)=self.token_stream.next();
             if let Token::Identifier(ident)=token1{
                 pos.add_span(pos0.span);
                 self.parse_special_token(Token::Assign)?;
@@ -122,11 +137,11 @@ impl PipelineParser{
         return Err(UnexpectedToken(token))
     }
     pub fn parse_fn_def(&mut self)->ParseResult<(FnDef,Position)>{
-        let (next,mut pos)=self.token_stream.next().unwrap();
+        let (next,mut pos)=self.token_stream.next();
         match next {
             Token::Keyword(s) if s.as_str()=="fn"=>{
                 pos.add_span(2);
-                let (next1,pos1)=self.token_stream.next().unwrap();
+                let (next1,pos1)=self.token_stream.next();
                 if let Token::Identifier(ident)=next1{
                     pos.add_span(pos1.span);
                     let (dec_args,pos2)=self.parse_fn_def_args()?;
@@ -154,7 +169,7 @@ impl PipelineParser{
         let mut v=vec![];
         let mut p=start.1;
         loop {
-            let (token,_)=self.token_stream.peek().unwrap();
+            let (token,_)=self.token_stream.peek();
             if Token::BraceRight==token{
                break
             }
@@ -172,10 +187,10 @@ impl PipelineParser{
         return Ok((v,p))
     }
     pub fn parse_variable_declaration(&mut self)->ParseResult<(VariableDeclaration,Position)>{
-        let (next,mut pos)=self.token_stream.next().unwrap();
+        let (next,mut pos)=self.token_stream.next();
         if let Token::Identifier(s)=next.clone(){
             self.parse_special_token(Token::Colon)?;
-            let (next1,pos1)=self.token_stream.next().unwrap();
+            let (next1,pos1)=self.token_stream.next();
             if let Token::Identifier(s1)=next1{
                 pos.add_span(1+pos1.span);
                 return Ok((VariableDeclaration::new(s,s1),pos))
@@ -186,50 +201,67 @@ impl PipelineParser{
     }
 
     pub fn parse_expr_stmt(&mut self)->ParseResult<Stmt>{
-        let token=self.token_stream.peek();
-        return Ok(match token {
-            None => {
-                Stmt::Noop
-            }
-            Some((token, pos)) => {
-                match token {
-                    Token::Identifier(_) => {
-                        let (fn_call_expr, pos) = self.parse_fn_call_expr()?;
-                        Stmt::FnCall(Box::new(fn_call_expr), pos)
+        let (token,mut pos0)=self.token_stream.next();
+        return match token {
+            Token::Identifier(s) => {
+                let (peek, pos) = self.token_stream.peek();
+                match peek {
+                    Token::BraceLeft => {
+                        let (fn_call_expr, pos) = self.parse_fn_call_expr(&s, pos0)?;
+                        Ok(Stmt::FnCall(Box::new(fn_call_expr), pos))
                     }
-                    _ => Stmt::Noop
-                }
-            }
-        })
-    }
-    pub fn parse_fn_call_expr(&mut self) -> ParseResult<(FnCallExpr,Position)> {
-        let  (token,mut pos)=self.token_stream.next().unwrap();
-        match token {
-            Token::Identifier(s)=>{
-                let (mut args,args_pos)=self.parse_fn_call_args()?;
-                pos.add_span(args_pos.span);
-                if let Some((peek,mut pos1))=self.token_stream.peek(){
-                    if Token::ParenthesisLeft==peek{
-                        self.parse_special_token(Token::ParenthesisLeft).unwrap();
-                        let blocks=self.parse_stmt_blocks()?;
-                        for stmt in &blocks{
-                            pos1.add_span(stmt.position().span)
-                        }
-                        let fn_def=FnDef::new("".to_string(),vec![],blocks);
-                        pos1.add_span(1);
-                        pos.add_span(pos1.span);
-                        args.push(Expr::FnClosure(FnClosureExpr { def: fn_def },pos1));
-                        self.parse_special_token(Token::ParenthesisRight).unwrap();
+                    Token::Assign => {
+                        let (_, mut pos) = self.token_stream.next();
+                        let expr = self.parse_expr()?;
+                        pos.add_span(expr.position().span);
+                        return Ok(Stmt::Let(Box::new((s, expr)), pos))
                     }
-                }
+                    Token::SquareBracketLeft=>{
+                        self.token_stream.next();
+                        let expr=self.parse_math_expr()?;
+                        self.parse_special_token(Token::SquareBracketRight)?;
+                        self.parse_special_token(Token::Assign)?;
+                        let value=self.parse_expr()?;
+                        pos0.add_span(1+1+expr.position().span+value.position().span);
+                        return Ok(Stmt::ArrayAssign(s,Box::new(expr),Box::new(value),pos0))
 
-                Ok((FnCallExpr{
-                    name: s,
-                    args
-                },pos))
+                    }
+                    Token::Dot=>{
+                        self.token_stream.next();
+                        let (token1,mut pos1)=self.token_stream.next();
+                        let (mut fn_call_expr, pos) = self.parse_fn_call_expr(&token1.get_identifier_value(), pos1)?;
+                        fn_call_expr.args.insert(0,Expr::Variable(s,pos0));
+                        Ok(Stmt::FnCall(Box::new(fn_call_expr), pos))
+                    }
+                    _ => Ok(Stmt::Noop)
+                }
             }
-            _=>Err(ParseError::UnexpectedToken(token))
+            _ => Ok(Stmt::Noop)
         }
+    }
+    pub fn parse_fn_call_expr(&mut self,s:&str,pos:Position) -> ParseResult<(FnCallExpr,Position)> {
+        let mut pos=pos;
+        let (mut args,args_pos)=self.parse_fn_call_args()?;
+        pos.add_span(args_pos.span);
+        if let (peek,mut pos1)=self.token_stream.peek(){
+            if Token::ParenthesisLeft==peek{
+                self.parse_special_token(Token::ParenthesisLeft).unwrap();
+                let blocks=self.parse_stmt_blocks()?;
+                for stmt in &blocks{
+                    pos1.add_span(stmt.position().span)
+                }
+                let fn_def=FnDef::new("".to_string(),vec![],blocks);
+                pos1.add_span(1);
+                pos.add_span(pos1.span);
+                args.push(Expr::FnClosure(FnClosureExpr { def: fn_def },pos1));
+                self.parse_special_token(Token::ParenthesisRight).unwrap();
+            }
+        }
+
+        Ok((FnCallExpr{
+            name: s.into(),
+            args
+        },pos))
     }
     pub fn parse_fn_call_args(&mut self)->ParseResult<(Vec<Expr>,Position)>{
         self.parse_special_token(Token::BraceLeft)?;
@@ -237,7 +269,7 @@ impl PipelineParser{
         let mut p=NONE.clone();
         p.add_span(1);
         loop {
-            let (peek,_)=self.token_stream.peek().unwrap();
+            let (peek,_)=self.token_stream.peek();
             if peek==Token::BraceRight{
                 self.token_stream.next();
                 break
@@ -250,7 +282,7 @@ impl PipelineParser{
             }
             p.add_span(expr_pos.span);
 
-            let (token,_)=self.token_stream.peek().unwrap();
+            let (token,_)=self.token_stream.peek();
 
             match token {
                 Token::BraceRight => {
@@ -266,28 +298,36 @@ impl PipelineParser{
         }
         return Ok((v,p))
     }
-    pub fn parse_expr(&mut self)->ParseResult<Expr>{
-        let (token,mut pos)=self.token_stream.next().unwrap();
+
+    fn parse_term(&mut self)->ParseResult<Expr>{
+        let (token,mut pos)=self.token_stream.next();
         match token {
             Token::String(s) => {
                 Ok(Expr::StringConstant(s,pos))
             }
             Token::Int(i) => {
-                let (peek,_)=self.token_stream.peek().unwrap_or((Token::EOF,NONE.clone()));
+                let (peek,_)=self.token_stream.peek();
                 match peek {
-                    Token::Plus => {
-                        self.token_stream.next();
-                        let right=self.parse_expr()?;
-                        let left=Box::new(Expr::IntConstant(i,pos.clone()));
-                        pos.add_span(1+right.position().span);
-                        Ok(BinaryExpr(Op::Plus,left,Box::new(right),pos))
-                    }
                     Token::Mul=>{
                         self.token_stream.next();
-                        let right=self.parse_expr()?;
+                        let right=self.parse_term()?;
                         let left=Box::new(Expr::IntConstant(i,pos.clone()));
                         pos.add_span(1+right.position().span);
                         Ok(BinaryExpr(Op::Mul,left,Box::new(right),pos))
+                    }
+                    Token::Div=>{
+                        self.token_stream.next();
+                        let right=self.parse_term()?;
+                        let left=Box::new(Expr::IntConstant(i,pos.clone()));
+                        pos.add_span(1+right.position().span);
+                        Ok(BinaryExpr(Op::Div,left,Box::new(right),pos))
+                    }
+                    Token::Mod=>{
+                        self.token_stream.next();
+                        let right=self.parse_term()?;
+                        let left=Box::new(Expr::IntConstant(i,pos.clone()));
+                        pos.add_span(1+right.position().span);
+                        Ok(BinaryExpr(Op::Mod,left,Box::new(right),pos))
                     }
                     _=>Ok(Expr::IntConstant(i,pos))
                 }
@@ -296,30 +336,129 @@ impl PipelineParser{
             Token::Float(f) => {
                 Ok(Expr::FloatConstant(f,pos))
             }
-            Token::Identifier(i) => {
-                let (peek,pos1)=self.token_stream.peek().unwrap();
+            Token::Identifier(ident) => {
+                let (peek,mut pos1)=self.token_stream.peek();
                 match peek {
-                    Token::Plus => {
+                    Token::Mul=>{
                         self.token_stream.next();
-                        let right=self.parse_expr()?;
-                        let left=Box::new(Expr::Variable(i,pos.clone()));
+                        let right=self.parse_term()?;
+                        let left=Box::new(Expr::Variable(ident,pos.clone()));
                         pos.add_span(1+right.position().span);
-                        Ok(BinaryExpr(Op::Plus,left,Box::new(right),pos))
+                        Ok(BinaryExpr(Op::Mul,left,Box::new(right),pos))
+                    }
+                    Token::Div=>{
+                        self.token_stream.next();
+                        let right=self.parse_term()?;
+                        let left=Box::new(Expr::Variable(ident,pos.clone()));
+                        pos.add_span(1+right.position().span);
+                        Ok(BinaryExpr(Op::Div,left,Box::new(right),pos))
+                    }
+                    Token::Mod=>{
+                        self.token_stream.next();
+                        let right=self.parse_term()?;
+                        let left=Box::new(Expr::Variable(ident,pos.clone()));
+                        pos.add_span(1+right.position().span);
+                        Ok(BinaryExpr(Op::Mod,left,Box::new(right),pos))
                     }
                     Token::BraceLeft=>{
                         let (args,pos2)=self.parse_fn_call_args().unwrap();
-                        let fn_expr=FnCallExpr{name:i,args};
+                        let fn_expr=FnCallExpr{name:ident,args};
                         pos.add_span(pos2.span);
                         return Ok(Expr::FnCall(fn_expr,pos));
                     }
-                    _=> Ok(Expr::Variable(i,pos))
+                    Token::SquareBracketLeft=>{
+                        self.token_stream.next();
+                        let e=self.parse_math_expr()?;
+                        self.parse_special_token(Token::SquareBracketRight)?;
+                        pos1.add_span(1+e.position().span+1);
+                        return Ok(Expr::Index(ident,Box::new(e),pos1))
+                    }
+                    _=> Ok(Expr::Variable(ident,pos))
                 }
             }
             _=>Err(ParseError::UnexpectedToken(token))
         }
     }
+    fn parse_math_expr(&mut self)->ParseResult<Expr>{
+        let lhs=self.parse_term()?;
+        let next=self.token_stream.peek();
+        return match next.0 {
+            Token::Plus=>{
+                self.token_stream.next();
+                let mut pos=lhs.position();
+                let rhs=self.parse_expr()?;
+                pos.add_span(1+rhs.position().span);
+                Ok(Expr::BinaryExpr(Op::Plus,Box::new(lhs),Box::new(rhs),pos))
+            }
+            Token::Minus=>{
+                self.token_stream.next();
+                let mut pos=lhs.position();
+                let rhs=self.parse_expr()?;
+                pos.add_span(1+rhs.position().span);
+                Ok(Expr::BinaryExpr(Op::Minus,Box::new(lhs),Box::new(rhs),pos))
+            }
+            _=>Ok(lhs)
+        }
+    }
+    fn parse_array(&mut self)->ParseResult<Expr>{
+        let (next,mut pos)=self.token_stream.next();
+        let mut v=vec![];
+        loop{
+            let e=self.parse_expr()?;
+            v.push(e.clone());
+            pos.add_span(e.position().span);
+            let (peek,pos0)=self.token_stream.peek();
+            match peek {
+                Token::Comma=>{
+                    self.token_stream.next();
+                    pos.add_span(1);
+                    continue
+                }
+                Token::SquareBracketRight=>{
+                    self.token_stream.next();
+                    pos.add_span(1);
+                    break
+                }
+                t=>return Err(ParseError::UnexpectedToken(t))
+            }
+        }
+        return Ok(Expr::Array(v,pos))
+
+    }
+    pub fn parse_expr(&mut self)->ParseResult<Expr>{
+        let (peek,pos)=self.token_stream.peek();
+        if peek==Token::SquareBracketLeft{
+            return self.parse_array()
+        }
+        let lhs=self.parse_math_expr()?;
+        let next=self.token_stream.peek();
+        return match next.0 {
+            Token::Greater=>{
+                self.token_stream.next();
+                let mut pos=lhs.position();
+                let rhs=self.parse_math_expr()?;
+                pos.add_span(1+rhs.position().span);
+                Ok(Expr::BinaryExpr(Op::Greater,Box::new(lhs),Box::new(rhs),pos))
+            }
+            Token::Less=>{
+                self.token_stream.next();
+                let mut pos=lhs.position();
+                let rhs=self.parse_math_expr()?;
+                pos.add_span(1+rhs.position().span);
+                Ok(Expr::BinaryExpr(Op::Less,Box::new(lhs),Box::new(rhs),pos))
+            }
+            Token::Equal=>{
+                self.token_stream.next();
+                let mut pos=lhs.position();
+                let rhs=self.parse_math_expr()?;
+                pos.add_span(1+rhs.position().span);
+                Ok(Expr::BinaryExpr(Op::Equal,Box::new(lhs),Box::new(rhs),pos))
+            }
+            _=>Ok(lhs)
+        }
+    }
     pub fn parse_special_token(&mut self,rhs: Token)->ParseResult<(Token,Position)>{
-        let (token,pos)=self.token_stream.next().unwrap();
+        let (token,pos)=self.token_stream.next();
         match token {
             t if t.token_id()==rhs.token_id()=>{
                 return Ok((t,pos))
