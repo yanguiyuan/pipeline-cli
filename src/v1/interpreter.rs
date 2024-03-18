@@ -35,39 +35,8 @@ impl Interpreter{
         self.builtin_fn_lib.insert(String::from(name),Function::Script(Box::new(f.clone())));
     }
     pub async fn eval_stmt(&mut self,stmt:Stmt)->EvalResult<Dynamic>{
-        match stmt {
-            Stmt::FnCall(fc, _) => {
-                self.eval_fn_call_expr(*fc).await?;
-            }
-            Stmt::Let(l,_)=>{
-                let ctx=PipelineEngine::background();
-                self.eval_let_stmt(ctx,l).await?;
-            }
-            Stmt::Return(e,_)=>{
-                let ctx=PipelineEngine::background();
-                return self.eval_expr(ctx, *e).await
-            }
-            Stmt::If(b,blocks,_)=>{
-                let ctx=PipelineEngine::background();
-                let d=self.eval_expr(ctx.clone(),*b).await?;
-                let d=d.as_bool();
-                return match d {
-                    None => {
-                        Err(EvalError::ExpectedDataType("bool".into()))
-                    }
-                    Some(d) => {
-                        if d {
-                            for i in *blocks {
-                                self.eval_stmt_with_context(ctx.clone(), i).await?;
-                            }
-                        }
-                        Ok(Dynamic::Unit)
-                    }
-                }
-            }
-            Stmt::Noop => {}
-        }
-        Ok(Dynamic::Unit)
+        let ctx=PipelineEngine::background();
+        return self.eval_stmt_with_context(ctx,stmt).await
     }
     #[async_recursion::async_recursion]
     pub async fn eval_stmt_with_context(&mut self, ctx:Arc<RwLock<dyn Context<PipelineContextValue>>>, stmt:Stmt) ->EvalResult<Dynamic>{
@@ -90,10 +59,42 @@ impl Interpreter{
                         Err(EvalError::ExpectedDataType("bool".into()))
                     }
                     Some(d) => {
+                        let mut l=Dynamic::Unit;
                         if d {
                             for i in *blocks {
-                                self.eval_stmt_with_context(ctx.clone(), i).await?;
+                                l=self.eval_stmt_with_context(ctx.clone(), i).await?;
                             }
+                        }
+                        Ok(l)
+                    }
+                }
+            }
+            Stmt::ArrayAssign(s,i,v,_)=>{
+                let scope=PipelineEngine::context_with_scope(&ctx).await;
+                let a=PipelineEngine::context_with_dynamic(&ctx,s.clone()).await.unwrap();
+                let mut a=a.as_array().unwrap();
+                let i=self.eval_expr(ctx.clone(),*i).await?;
+                let i=i.as_integer().unwrap();
+                let v=self.eval_expr(ctx,*v).await?;
+                a[i as usize]=v;
+                scope.write().await.set(s.as_str(),Dynamic::Array(a));
+
+            }
+            Stmt::While(b,blocks,_)=>{
+                let d=self.eval_expr(ctx.clone(),*b.clone()).await?;
+                let d=d.as_bool();
+                return match d {
+                    None => {
+                        Err(EvalError::ExpectedDataType("bool".into()))
+                    }
+                    Some(d) => {
+                        let mut condition=d;
+                        while condition {
+                            for i in &*blocks {
+                                self.eval_stmt_with_context(ctx.clone(), i.clone()).await?;
+                            }
+                             let d0=self.eval_expr(ctx.clone(),*b.clone()).await?;
+                            condition=d0.as_bool().unwrap();
                         }
                         Ok(Dynamic::Unit)
                     }
@@ -132,6 +133,28 @@ impl Interpreter{
                 }
 
             }
+            Expr::Array(v,_)=>{
+                let mut dv=vec![];
+                for e in v{
+                    let d=self.eval_expr(ctx.clone(), e).await?;
+                    dv.push(d)
+                }
+                Ok(Dynamic::Array(dv))
+            }
+            Expr::Index(s,e,_)=>{
+                let d=PipelineEngine::context_with_dynamic(&ctx,s.clone()).await;
+                match d {
+                    None => {
+                        Err(VariableUndefined(s))
+                    }
+                    Some(d) => {
+                        let a=d.as_array().unwrap();
+                        let index=self.eval_expr(ctx,*e).await?;
+                        let index=index.as_integer().unwrap();
+                        Ok(a[index as usize].clone())
+                    }
+                }
+            }
             Expr::BinaryExpr(op,l,r,_)=>{
                 match op {
                     Op::Plus => {
@@ -139,10 +162,40 @@ impl Interpreter{
                         let r_r=self.eval_expr(ctx.clone(),*r).await?;
                         return Ok(l_r+r_r)
                     }
+                    Op::Minus => {
+                        let l_r=self.eval_expr(ctx.clone(),*l).await?;
+                        let r_r=self.eval_expr(ctx.clone(),*r).await?;
+                        return Ok(l_r-r_r)
+                    }
                     Op::Mul=>{
                         let l_r=self.eval_expr(ctx.clone(),*l).await?;
                         let r_r=self.eval_expr(ctx.clone(),*r).await?;
                         return Ok(l_r*r_r)
+                    }
+                    Op::Greater=>{
+                        let l_r=self.eval_expr(ctx.clone(),*l).await?;
+                        let r_r=self.eval_expr(ctx.clone(),*r).await?;
+                        return Ok((l_r>r_r).into())
+                    }
+                    Op::Less=>{
+                        let l_r=self.eval_expr(ctx.clone(),*l).await?;
+                        let r_r=self.eval_expr(ctx.clone(),*r).await?;
+                        return Ok((l_r<r_r).into())
+                    }
+                    Op::Equal=>{
+                        let l_r=self.eval_expr(ctx.clone(),*l).await?;
+                        let r_r=self.eval_expr(ctx.clone(),*r).await?;
+                        return Ok((l_r==r_r).into())
+                    }
+                    Op::Div=>{
+                        let l_r=self.eval_expr(ctx.clone(),*l).await?;
+                        let r_r=self.eval_expr(ctx.clone(),*r).await?;
+                        return Ok(l_r/r_r)
+                    }
+                    Op::Mod=>{
+                        let l_r=self.eval_expr(ctx.clone(),*l).await?;
+                        let r_r=self.eval_expr(ctx.clone(),*r).await?;
+                        return Ok(l_r%r_r)
                     }
                 }
             }
@@ -193,6 +246,8 @@ impl Interpreter{
                         let mut e=PipelineEngine::new_raw();
                         e.set_interpreter(self);
                         let mut scope=Scope::new();
+                        let parent=PipelineEngine::context_with_scope(&ctx).await;
+                        scope.set_parent(parent);
                         let mut i=0;
                         for param in &fn_def.args{
                             scope.set(param.name.as_str(),v.get(i).unwrap().clone());

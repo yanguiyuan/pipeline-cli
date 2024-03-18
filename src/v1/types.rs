@@ -1,5 +1,6 @@
+use std::cmp::Ordering;
 use std::fmt::{Display, Formatter};
-use std::ops::{Add, Mul};
+use std::ops::{Add, Div, Mul, Rem, Sub};
 use std::sync::{Arc};
 use crate::context::{Context, PipelineContextValue};
 use crate::engine::{PipelineEngine, PipelineResult};
@@ -13,7 +14,8 @@ pub enum Dynamic{
     String(String),
     Boolean(bool),
     Variable(String),
-    FnPtr(Box<FnPtr>)
+    FnPtr(Box<FnPtr>),
+    Array(Vec<Dynamic>)
 }
 #[derive(Debug,Clone)]
 pub struct FnPtr{
@@ -74,6 +76,12 @@ impl From<i64> for Dynamic{
         Dynamic::Integer(value)
     }
 }
+
+impl From<bool> for Dynamic {
+    fn from(value: bool) -> Self {
+        Dynamic::Boolean(value)
+    }
+}
 impl Display for Dynamic {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -83,7 +91,18 @@ impl Display for Dynamic {
             Dynamic::String(s) => {write!(f,"{s}")}
             Dynamic::Boolean(b) => {write!(f,"{b}")}
             Dynamic::Variable(a) => {write!(f,"Variable({a})")}
-            Dynamic::FnPtr(p)=>write!(f,"function {:}",p.name)
+            Dynamic::FnPtr(p)=>write!(f,"function {:}",p.name),
+            Dynamic::Array(v)=>{
+                write!(f, "[").expect("write失败");
+                for (i,a) in v.iter().enumerate(){
+                    write!(f, "{a}").expect("write失败");
+                    if i<v.len()-1{
+                        write!(f, ",").expect("write失败");
+                    }
+
+                }
+                write!(f,"]")
+            }
         }
     }
 }
@@ -105,6 +124,77 @@ impl Mul for Dynamic{
         }
     }
 }
+
+impl Div for Dynamic {
+    type Output = Dynamic;
+
+    fn div(self, rhs: Self) -> Self::Output {
+        match self {
+            Dynamic::Integer(i) => {
+                let r=rhs.as_integer().unwrap();
+                Dynamic::Integer(i/r)
+            }
+            Dynamic::Float(f) => {
+                let t=rhs.as_float().unwrap();
+                Dynamic::Float(f/t)
+            }
+            _=>panic!("不能进行相乘操作")
+        }
+    }
+}
+
+impl Rem for Dynamic {
+    type Output = Dynamic;
+
+    fn rem(self, rhs: Self) -> Self::Output {
+        match self {
+            Dynamic::Integer(i) => {
+                let r=rhs.as_integer().unwrap();
+                Dynamic::Integer(i%r)
+            }
+            Dynamic::Float(f) => {
+                let t=rhs.as_float().unwrap();
+                Dynamic::Float(f%t)
+            }
+            _=>panic!("不能进行相乘操作")
+        }
+    }
+}
+impl PartialEq<Self> for Dynamic {
+    fn eq(&self, rhs: &Self) -> bool {
+        match self {
+            Dynamic::Integer(i) => {
+                let r=rhs.as_integer().unwrap();
+                i.eq(&r)
+            }
+            Dynamic::Float(f) => {
+                let t=rhs.as_float().unwrap();
+                f.eq(&t)
+            }
+            Dynamic::String(s)=>{
+                let o=rhs.as_string().unwrap();
+                s.eq(&o)
+            }
+            _=>panic!("不能进行相等操作")
+        }
+    }
+}
+
+impl PartialOrd for Dynamic {
+    fn partial_cmp(&self, rhs: &Self) -> Option<Ordering> {
+        match self {
+            Dynamic::Integer(i) => {
+                let r=rhs.as_integer().unwrap();
+                i.partial_cmp(&r)
+            }
+            Dynamic::Float(f) => {
+                let t=rhs.as_float().unwrap();
+                f.partial_cmp(&t)
+            }
+            _=>panic!("不能进行比较操作")
+        }
+    }
+}
 impl Add for Dynamic{
     type Output = Dynamic;
 
@@ -117,6 +207,24 @@ impl Add for Dynamic{
             Dynamic::Float(f) => {
                 let t=rhs.as_float().unwrap();
                 Dynamic::Float(f+t)
+            }
+            _=>panic!("不能进行相加操作")
+        }
+    }
+}
+
+impl Sub for Dynamic {
+    type Output = Dynamic;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        match self {
+            Dynamic::Integer(i) => {
+                let r=rhs.as_integer().unwrap();
+                Dynamic::Integer(i-r)
+            }
+            Dynamic::Float(f) => {
+                let t=rhs.as_float().unwrap();
+                Dynamic::Float(f-t)
             }
             _=>panic!("不能进行相加操作")
         }
@@ -188,6 +296,12 @@ impl Dynamic{
     pub fn as_float(&self)->Option<f64>{
         match self {
             Dynamic::Float(i)=>Some(i.clone()),
+            _=>None
+        }
+    }
+    pub fn as_array(&self)->Option<Vec<Dynamic>>{
+        match self {
+            Dynamic::Array(i)=>Some(i.clone()),
             _=>None
         }
     }

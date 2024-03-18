@@ -7,6 +7,8 @@ pub enum Stmt{
     Let(Box<(String,Expr)>,Position),
     Return(Box<Expr>,Position),
     If(Box<Expr>,Box<Vec<Stmt>>,Position),
+    While(Box<Expr>,Box<Vec<Stmt>>,Position),
+    ArrayAssign(String,Box<Expr>,Box<Expr>,Position),
     Noop
 }
 
@@ -29,6 +31,12 @@ impl Stmt{
                 pos.clone()
             }
             Stmt::If(_,_,pos)=>{
+                pos.clone()
+            }
+            Stmt::While(_,_,pos)=>{
+                pos.clone()
+            }
+            Stmt::ArrayAssign(_,_,_,pos)=>{
                 pos.clone()
             }
             Stmt::Noop => {

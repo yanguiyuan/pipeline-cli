@@ -37,6 +37,8 @@ fn add(a:Int,b:Int){
 3. 函数调用
 ```
 print(add(12,5))
+let a=add(12,5)
+a.print()//如果参数是函数的第一个参数，可以通过.函数的方式进行调用。
 ```
 4. 条件判断
 
@@ -48,12 +50,37 @@ if a{
 
 ```
 5. 声明变量
+
+let可以省略(let a=1和a=1是等价的，都可以声明并初始化变量或者改变原有值)
 ```
 let a=1
 let a=1.25
 let a="hello"
 let a=true
 let b=a
+a=123
+b=[1,2,34]
+```
+
+6.循环
+```
+a=3
+while a>1{
+    println(a)
+    a=a-1
+}
+
+```
+
+7. 算术表达式
+
+目前仅支持+,-,*,/,%,>,<,==等二元表达式
+### 将其作为Rust程序的内嵌脚本使用
+
+```
+ let ast=PipelineEngine::default()
+                .eval_stmt_blocks("a=[1,2,3,4];println(a[1]);a[0]=10;println(a)").await.unwrap();
+
 ```
 
 ### Examples
