@@ -224,7 +224,7 @@ impl Interpreter{
                 continue
             }else if d.is_variable(){
                 let d=d.as_variable().unwrap();
-                let r=PipelineEngine::context_with_dynamic(&ctx,d.as_str()).await;
+                let r=PipelineEngine::context_with_dynamic(&ctx,d.as_str()).await.unwrap();
                 v.push(r);
                 continue
             }
