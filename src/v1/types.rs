@@ -71,6 +71,27 @@ impl From<String> for Dynamic{
         Dynamic::String(value)
     }
 }
+
+impl From<Dynamic> for String {
+    fn from(value: Dynamic) -> Self {
+        value.as_string().unwrap()
+    }
+}
+impl From<Dynamic> for bool {
+    fn from(value: Dynamic) -> Self {
+        value.as_bool().unwrap()
+    }
+}
+impl From<Dynamic> for i64 {
+    fn from(value: Dynamic) -> Self {
+        value.as_integer().unwrap()
+    }
+}
+impl From<Dynamic> for f64 {
+    fn from(value: Dynamic) -> Self {
+        value.as_float().unwrap()
+    }
+}
 impl From<i64> for Dynamic{
     fn from(value: i64) -> Self {
         Dynamic::Integer(value)

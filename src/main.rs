@@ -1,9 +1,11 @@
 
+
 mod v1;
 mod builtin;
 mod context;
 mod engine;
 mod logger;
+mod module;
 
 use std::any::{Any, TypeId};
 use std::collections::HashSet;
@@ -149,13 +151,14 @@ async fn cli(){
                     let pipeline=paths.get(0).unwrap().as_str();
                     let global=PipelineEngine::context_with_global_state(&background).await;
                     //确保global能够在engine执行eval前被释放
-                    {
-                        let mut global=global.write().await;
-                        global.set_value("path_pipeline",pipeline.into());
-                        let task=paths.get(1).unwrap().as_str();
-                        global.set_value("path_task",task.into());
-                        global.set_value("source",script.as_str().into());
-                    }
+
+                    let mut global=global.write().await;
+                    global.set_value("path_pipeline",pipeline.into());
+                    let task=paths.get(1).unwrap().as_str();
+                    global.set_value("path_task",task.into());
+                    global.set_value("source",script.as_str().into());
+
+                    drop(global);
                     let r=engine.eval_stmt_blocks_from_ast_with_context(background,stmt).await;
                     match r {
                         Ok(_) => {}
