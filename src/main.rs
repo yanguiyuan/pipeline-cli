@@ -212,16 +212,5 @@ async fn cli(){
 #[tokio::main]
 async fn main() ->PipelineResult<()>{
     cli().await;
-
-    // let ast=PipelineEngine::default().eval_stmt_blocks("a=true;a.println()").await.unwrap();
-    // println!("{:#?}",ast);
-    // let script=fs::read_to_string("pipeline.kts").unwrap();
-    // let lexer=Lexer::from_script(script);
-    // let mut parser=PipelineParser::from_token_stream(lexer.into_iter());
-    // let (fn_def,pos)=parser.par
-    // println!("{:#?}",fn_def);
-    // let mut e=PipelineEngine::default_with_pipeline();
-    // let r=e.eval_expr("3*2+2").await?;
-    // println!("{r}");
     Ok(())
 }

@@ -1,15 +1,10 @@
 use std::collections::HashMap;
-use std::io;
 use std::io::Read;
-use std::path::Path;
-use std::process::exit;
 use std::sync::{Arc,RwLock};
 use std::thread::JoinHandle;
-
-use crate::builtin::{cmd, copy, move_file, replace};
 use crate::context::{AppContext, Context, EmptyContext, Scope, ValueContext};
 use crate::context::PipelineContextValue;
-use crate::error::{PipelineError, PipelineResult};
+use crate::error::{ PipelineResult};
 use crate::logger::PipelineLogger;
 use crate::module::Module;
 use crate::v1::ast::AST;

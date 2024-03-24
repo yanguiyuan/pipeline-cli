@@ -1,31 +1,20 @@
-use std::any::Any;
 use std::collections::HashMap;
-use std::future::Future;
-use std::pin::Pin;
 use std::sync::{Arc, RwLock};
-use crate::context::{Context, EmptyContext, Scope};
+use crate::context::{Context, EmptyContext};
 use crate::context::PipelineContextValue;
 use crate::engine::{PipelineEngine};
 use crate::error::{PipelineError, PipelineResult};
-use crate::module::{Function, Module};
+use crate::module::{ Module};
 use crate::v1::expr::{Expr, FnCallExpr, Op};
-use crate::v1::parser::FnDef;
 use crate::v1::stmt::Stmt;
 use crate::v1::types::Dynamic;
-use crate::v1::types::Dynamic::FnPtr;
 
-// pub type EvalFn = fn(Arc<RwLock<dyn Context<PipelineContextValue>>>, Vec<Dynamic>) -> Pin<Box<dyn Future<Output = EvalResult<Dynamic>> + Send + 'static>>;
 #[derive(Clone,Debug)]
 pub struct Interpreter{
-    // pub builtin_fn_lib:HashMap<String,Function>,
     pub modules:HashMap<String,Module>,
     pub main_module:Arc<RwLock<Module>>
 }
-// #[derive(Clone,Debug)]
-// pub enum Function{
-//     Native(Box<EvalFn>),
-//     Script(Box<FnDef>)
-// }
+
 impl Interpreter{
     pub fn new()->Self{
         // Self{builtin_fn_lib:HashMap::new()}
@@ -36,12 +25,6 @@ impl Interpreter{
         let mut m=HashMap::new();
         Self{modules:m,main_module:sm}
     }
-    // pub fn register_fn(&mut self,name:&str,f:EvalFn){
-    //     self.builtin_fn_lib.insert(String::from(name),Function::Native(Box::new(f)));
-    // }
-    // pub fn register_script_fn(&mut self,name:&str,f:&FnDef){
-    //     self.builtin_fn_lib.insert(String::from(name),Function::Script(Box::new(f.clone())));
-    // }
     pub fn register_module(&mut self,name:impl Into<String>,module:Module){
         self.modules.insert(name.into(),module);
     }
@@ -253,34 +236,5 @@ impl Interpreter{
             None => {return Err(PipelineError::FunctionUndefined(f.name))}
             Some(f) => {return f.call(ctx,v)}
         }
-        // let func= self.builtin_fn_lib.get(f.name.as_str()).clone();
-        // match func {
-        //     None => {Err(FunctionUndefined(f.name))}
-        //     Some(func) => {
-        //         match func {
-        //             Function::Native(native_func) => {
-        //                 native_func(ctx,v)
-        //             }
-        //             Function::Script(fn_def) => {
-        //                 let mut ptr=crate::v1::types::FnPtr::new(fn_def.name.as_str());
-        //                 ptr.set_params(&f.args);
-        //                 ptr.set_fn_def(fn_def);
-        //                 let mut e=PipelineEngine::new_raw();
-        //                 e.set_interpreter(self);
-        //                 let mut scope=Scope::new();
-        //                 let parent=PipelineEngine::context_with_scope(&ctx);
-        //                 scope.set_parent(parent);
-        //                 let mut i=0;
-        //                 for param in &fn_def.args{
-        //                     scope.set(param.name.as_str(),v.get(i).unwrap().clone());
-        //                     i+=1;
-        //                 }
-        //                 let ctx=PipelineEngine::with_value(ctx,"$scope",PipelineContextValue::Scope(Arc::new(RwLock::new(scope))));
-        //                 Ok(ptr.call(&mut e,ctx).unwrap())
-        //             }
-        //         }
-        //
-        //     }
-        // }
     }
 }
