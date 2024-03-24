@@ -62,6 +62,9 @@ impl PipelineParser{
                         "while"=>{
                             self.parse_while_stmt()
                         }
+                        "import"=>{
+                            self.parse_import_stmt()
+                        }
                         t=>Err(PipelineError::UnusedKeyword(t.into()))
                     }
                 },
@@ -71,6 +74,24 @@ impl PipelineParser{
         }
 
     }
+    pub fn parse_import_stmt(&mut self,)->PipelineResult<Stmt>{
+        let (ret,mut pos)=self.token_stream.next();
+        if let Token::Keyword(s)=ret.clone(){
+            if s!="import"{
+                return Err(PipelineError::UnusedKeyword(s));
+            }
+            let (next,pos1)=self.token_stream.next();
+            return match next {
+               Token::Identifier(id)=>{
+                   pos.add_span(pos1.span);
+                   Ok(Stmt::Import(id,pos))
+               }
+               t=>Err(PipelineError::UnexpectedToken(t))
+            }
+        }
+        return Err(PipelineError::UnexpectedToken(ret));
+    }
+
     pub fn parse_if_stmt(&mut self)->PipelineResult<Stmt>{
         let (ret,mut pos)=self.token_stream.next();
         if let Token::Keyword(s)=ret.clone(){

@@ -10,6 +10,7 @@ use crate::context::{Context, PipelineContextValue};
 use crate::engine::{PipelineEngine};
 use crate::error::{PipelineError, PipelineResult};
 use crate::v1;
+use crate::v1::interpreter::Interpreter;
 
 use crate::v1::parser::FnDef;
 use crate::v1::types::Dynamic;
@@ -48,7 +49,7 @@ pub struct Module{
 }
 
 impl Function {
-    pub fn call(&self,ctx:Arc<RwLock<dyn Context<PipelineContextValue>>>,args:Vec<Dynamic>)->PipelineResult<Dynamic>{
+    pub fn call(&self, ctx:Arc<RwLock<dyn Context<PipelineContextValue>>>,  args:Vec<Dynamic>) ->PipelineResult<Dynamic>{
         match self {
             Function::Native(n) => {
                 let r=(*n)(ctx,args);
@@ -66,6 +67,11 @@ impl Module{
         Self{
             name:name.into(),
             functions:HashMap::new(),
+        }
+    }
+    pub fn merge(&mut self,module: &Module){
+        for (k,v) in &module.functions{
+            self.functions.insert(k.clone(),v.clone());
         }
     }
     pub fn with_std_module()->Self{
@@ -180,7 +186,10 @@ impl Module{
         pipe.register_pipe_function("pipeline",|ctx,args| {
             let pipeline_name=args.get(0).unwrap().as_string().unwrap();
             let blocks=args.get(1).unwrap().as_fn_ptr().unwrap().fn_def.unwrap().body;
-            let mut e=PipelineEngine::default_with_parallel();
+            let mut e=PipelineEngine::default_with_pipeline();
+            let share_module=PipelineEngine::context_with_shared_module(&ctx);
+            let i=Interpreter::with_shared_module(share_module);
+            e.set_interpreter(&i);
             let pipeline=PipelineEngine::context_with_global_value(&ctx,"path_pipeline");
             let ctx=PipelineEngine::with_value(ctx,"join_set",PipelineContextValue::JoinSet(Arc::new(std::sync::RwLock::new(vec![]))));
             if pipeline==pipeline_name||pipeline=="all"{
@@ -255,20 +264,23 @@ impl Module{
     pub fn register_script_function(&mut self,name:impl Into<String>,f:FnDef){
         self.functions.insert(name.into(),Function::Script(Box::new(f)));
     }
-    pub fn call(&mut self,function_name:impl Into<String>,args: Vec<Dynamic>)->PipelineResult<Dynamic>{
+    pub fn call(&mut self,ctx:Arc<RwLock<dyn Context<PipelineContextValue>>>,function_name:impl Into<String>,args: Vec<Dynamic>)->PipelineResult<Dynamic>{
         let name=function_name.into();
         let f=self.functions.get(name.clone().as_str());
         match f {
             None => {Err(PipelineError::FunctionUndefined(name))}
             Some(f) => {
-                let ctx=PipelineEngine::background();
                 let r=f.call(ctx,args);
                 return r
             }
         }
     }
     pub fn get_function(&self,name:impl Into<String>)->Option<Function>{
-        return None
+        let r=self.functions.get(name.into().as_str());
+        match r {
+            None => {None}
+            Some(s) => {Some(s.clone())}
+        }
     }
 }
 impl<

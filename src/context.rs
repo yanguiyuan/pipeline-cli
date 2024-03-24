@@ -5,6 +5,7 @@ use crate::error::PipelineResult;
 
 
 use crate::logger::PipelineLogger;
+use crate::module::Module;
 use crate::v1::position::Position;
 use crate::v1::types::Dynamic;
 
@@ -72,7 +73,8 @@ pub enum PipelineContextValue{
     Env(Arc<RwLock<HashMap<String,String>>>),
     Position(Position),
     Local(String),
-    Logger(Arc<RwLock<PipelineLogger>>)
+    Logger(Arc<RwLock<PipelineLogger>>),
+    SharedModule(Arc<RwLock<Module>>)
 }
 #[derive(Debug,Clone)]
 pub struct Scope{
@@ -149,6 +151,12 @@ impl PipelineContextValue{
     pub fn as_local(&self)->Option<String>{
         match self {
             PipelineContextValue::Local(s)=>Some( s.clone()),
+            _=>None
+        }
+    }
+    pub fn as_shared_module(&self)->Option<Arc<RwLock<Module>>>{
+        match self {
+            PipelineContextValue::SharedModule(s)=>Some( s.clone()),
             _=>None
         }
     }

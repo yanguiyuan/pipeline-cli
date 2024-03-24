@@ -38,7 +38,11 @@ impl Default for PipelineEngine {
 impl PipelineEngine{
     pub fn new_raw()->Self{
         let mut i=Interpreter::new();
-        i.register_module("std",Module::with_std_module());
+        let std=Module::with_std_module();
+        i.register_module("std",std);
+        i.merge_into_main_module("std");
+
+
         Self{
             parser:PipelineParser::new(),
             interpreter:i,
@@ -104,6 +108,8 @@ impl PipelineEngine{
     }
     pub fn default_with_pipeline()->Self{
         let mut default=PipelineEngine::default_with_parallel();
+        let pipe=Module::with_pipe_module();
+        default.interpreter.register_module("pipe",pipe);
         // default.register_fn("pipeline",  |ctx, args|Box::pin (async move {
         //     let pipeline_name=args.get(0).unwrap().as_string().unwrap();
         //     let blocks=args.get(1).unwrap().as_fn_ptr().unwrap().fn_def.unwrap().body;
@@ -127,6 +133,12 @@ impl PipelineEngine{
         let d=scope.read().unwrap();
         let d=d.get(key.as_ref());
        return d
+    }
+    pub fn context_with_shared_module(ctx:&Arc<RwLock<dyn Context<PipelineContextValue>>>)->Arc<RwLock<Module>>{
+        let module=ctx.read().unwrap().value("$shared_module").unwrap();
+        let module=module.as_shared_module().unwrap();
+        return module
+
     }
     pub  fn context_with_global_value(ctx:&Arc<RwLock<dyn Context<PipelineContextValue>>>,key:impl AsRef<str>)->String{
         let global=PipelineEngine::context_with_global_state(ctx);
@@ -216,14 +228,8 @@ impl PipelineEngine{
         self.parser.set_lexer(lexer);
         let stmts=self.parser.parse_stmt_blocks()?;
         self.fn_lib=self.parser.get_fn_lib();
-        let module=self.interpreter.get_mut_module("main");
-        match module {
-            None => {return Err(PipelineError::UnknownModule("main".into()))}
-            Some(module) => {
-                for lib in &self.fn_lib{
-                    module.register_script_function(lib.clone().name,lib.clone());
-                }
-            }
+        for lib in &self.fn_lib{
+            self.interpreter.main_module.write().unwrap().register_script_function(lib.clone().name,lib.clone());
         }
         return Ok(stmts)
     }

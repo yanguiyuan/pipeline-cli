@@ -18,7 +18,8 @@ use crate::v1::types::Dynamic::FnPtr;
 #[derive(Clone,Debug)]
 pub struct Interpreter{
     // pub builtin_fn_lib:HashMap<String,Function>,
-    pub modules:HashMap<String,Module>
+    pub modules:HashMap<String,Module>,
+    pub main_module:Arc<RwLock<Module>>
 }
 // #[derive(Clone,Debug)]
 // pub enum Function{
@@ -29,8 +30,11 @@ impl Interpreter{
     pub fn new()->Self{
         // Self{builtin_fn_lib:HashMap::new()}
         let mut m=HashMap::new();
-        m.insert("main".into(),Module::new("main"));
-        Self{modules:m}
+        Self{modules:m,main_module:Arc::new(RwLock::new(Module::new("main")))}
+    }
+    pub fn with_shared_module(sm:Arc<RwLock<Module>>)->Self{
+        let mut m=HashMap::new();
+        Self{modules:m,main_module:sm}
     }
     // pub fn register_fn(&mut self,name:&str,f:EvalFn){
     //     self.builtin_fn_lib.insert(String::from(name),Function::Native(Box::new(f)));
@@ -40,6 +44,10 @@ impl Interpreter{
     // }
     pub fn register_module(&mut self,name:impl Into<String>,module:Module){
         self.modules.insert(name.into(),module);
+    }
+    pub fn merge_into_main_module(&mut self,module_name: impl AsRef<str>){
+        let mut target=self.modules.get(module_name.as_ref()).unwrap();
+        self.main_module.write().unwrap().merge(target)
     }
     pub fn get_mut_module(&mut self,name:impl Into<String>)->Option<&mut Module>{
         let m=self.modules.get_mut(name.into().as_str());
@@ -55,6 +63,9 @@ impl Interpreter{
             Stmt::FnCall(fc, pos) => {
                 let ctx=PipelineEngine::with_value(ctx,"$pos",pos.into());
                 self.eval_fn_call_expr_with_context(ctx,*fc)?;
+            }
+            Stmt::Import(s,_)=>{
+                self.merge_into_main_module(s)
             }
             Stmt::Let(l,_)=>{
                 self.eval_let_stmt(ctx,l)?;
@@ -235,8 +246,9 @@ impl Interpreter{
             }
             v.push(d);
         }
-        let mut module=self.modules.get_mut("std").unwrap();
-        let r=module.call(f.name,v);
+        let ctx=PipelineEngine::with_value(ctx,"$shared_module",PipelineContextValue::SharedModule(self.main_module.clone()));
+
+        let r=self.main_module.write().unwrap().call(ctx,f.name,v);
         return r.into();
         // let func= self.builtin_fn_lib.get(f.name.as_str()).clone();
         // match func {
