@@ -7,7 +7,7 @@ use crate::context::{Context, EmptyContext, Scope};
 use crate::context::PipelineContextValue;
 use crate::engine::{PipelineEngine};
 use crate::error::{PipelineError, PipelineResult};
-use crate::module::Module;
+use crate::module::{Function, Module};
 use crate::v1::expr::{Expr, FnCallExpr, Op};
 use crate::v1::parser::FnDef;
 use crate::v1::stmt::Stmt;
@@ -248,8 +248,11 @@ impl Interpreter{
         }
         let ctx=PipelineEngine::with_value(ctx,"$shared_module",PipelineContextValue::SharedModule(self.main_module.clone()));
 
-        let r=self.main_module.write().unwrap().call(ctx,f.name,v);
-        return r.into();
+        let r=self.main_module.read().unwrap().get_function(f.name.clone());
+        match r {
+            None => {return Err(PipelineError::FunctionUndefined(f.name))}
+            Some(f) => {return f.call(ctx,v)}
+        }
         // let func= self.builtin_fn_lib.get(f.name.as_str()).clone();
         // match func {
         //     None => {Err(FunctionUndefined(f.name))}

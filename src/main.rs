@@ -89,7 +89,10 @@ fn handle_init(t:&str){
 fn handle_pipeline_err(e:PipelineError){
     match e {
         PipelineError::FunctionUndefined(name) => {
-            println!("\x1b[31m[Error]:eval failed,function {name} undefined.\x1b[0m")
+            println!("\x1b[31m[Error]:eval failed,function {name} undefined.\x1b[0m");
+            if name=="pipeline"{
+                println!("\x1b[31m[Error]:You can try to add 'import pipe' to use pipeline.\x1b[0m")
+            }
         }
         PipelineError::VariableUndefined(name) => {
             println!("\x1b[31m[Error]:eval failed,variable \"{name}\" undefined.\x1b[0m")
@@ -132,7 +135,7 @@ async fn cli(){
             let mut engine=PipelineEngine::default_with_pipeline();
             let script=fs::read_to_string("pipeline.kts").unwrap();
             let stmt=engine.compile_stmt_blocks(script.clone());
-            println!("{:?}",stmt);
+            // println!("{:?}",stmt);
             match stmt {
                 Ok(stmt) => {
                     let background=PipelineEngine::background();
