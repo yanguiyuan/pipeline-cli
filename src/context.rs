@@ -1,17 +1,16 @@
 use std::collections::HashMap;
-use std::sync::{Arc};
-use async_recursion::async_recursion;
-use async_trait::async_trait;
-use tokio::sync::RwLock;
-use crate::context;
-use crate::engine::PipelineResult;
+use std::sync::{Arc, RwLock};
+use std::thread::JoinHandle;
+use crate::error::PipelineResult;
+
+
 use crate::logger::PipelineLogger;
 use crate::v1::position::Position;
 use crate::v1::types::Dynamic;
 
-#[async_trait]
+
 pub trait Context<T>:Send + Sync{
-    async fn value(& self,key:&str)->Option<T>;
+    fn value(& self,key:&str)->Option<T>;
 }
 
 pub struct ValueContext<T> { parent:Arc<RwLock<dyn Context<T>>>, key:&'static str, value:T }
@@ -25,14 +24,14 @@ impl<T:Clone + std::marker::Sync> ValueContext<T> {
         }
     }
 }
-#[async_trait]
-impl<T:Clone + std::marker::Sync + std::marker::Send> Context<T> for ValueContext<T> {
 
-    async fn value(&self, key:&str) ->Option<T>{
+impl<T:Clone + Sync + Send> Context<T> for ValueContext<T> {
+
+     fn value(&self, key:&str) ->Option<T>{
         if key==self.key{
             return Some(self.value.clone());
         }
-        return self.parent.read().await.value(key).await;
+        return self.parent.read().unwrap().value(key);
     }
 }
 #[derive(Debug)]
@@ -42,10 +41,10 @@ impl EmptyContext{
         return Self;
     }
 }
-#[async_trait]
+
 impl<T> Context<T> for EmptyContext{
 
-    async fn value(&self, _: &str) -> Option<T> {
+    fn value(&self, _: &str) -> Option<T> {
         None
     }
 }
@@ -68,7 +67,7 @@ impl<T> AppContext<T>{
 #[derive(Debug,Clone)]
 pub enum PipelineContextValue{
     GlobalState(Arc<RwLock<AppContext<String>>>),
-    JoinSet(Arc<RwLock<tokio::task::JoinSet<PipelineResult<()>>>>),
+    JoinSet(Arc<RwLock<Vec<JoinHandle<PipelineResult<()>>>>>),
     Scope(Arc<RwLock<Scope>>),
     Env(Arc<RwLock<HashMap<String,String>>>),
     Position(Position),
@@ -86,15 +85,14 @@ impl Scope {
         Self{data:HashMap::new(),parent:None}
     }
     pub fn set_parent(&mut self,p:Arc<RwLock<Scope>>){self.parent=Some(p)}
-    #[async_recursion]
-    pub async fn get(&self, key:&str) ->Option<Dynamic>{
+    pub fn get(&self, key:&str) ->Option<Dynamic>{
         let r=self.data.get(key);
         match r {
             None => {
                 if self.parent.is_some(){
                    let rr=self.parent.clone().unwrap();
-                    let rr=rr.read().await;
-                    return rr.get(key).await
+                    let rr=rr.read().unwrap();
+                    return rr.get(key)
                 }
                 return None
             }
@@ -124,7 +122,7 @@ impl PipelineContextValue{
             _=>None
         }
     }
-    pub fn as_join_set(&self)->Option<Arc<RwLock<tokio::task::JoinSet<PipelineResult<()>>>>>{
+    pub fn as_join_set(&self)->Option<Arc<RwLock<Vec<JoinHandle<PipelineResult<()>>>>>>{
         match self {
             PipelineContextValue::JoinSet(j)=>Some(j.clone()),
             _=>None

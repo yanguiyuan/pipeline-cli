@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::process::Command;
-use std::sync::Arc;
-use tokio::sync::RwLock;
+use std::sync::{Arc, RwLock};
 use crate::context::{Context, PipelineContextValue};
 use crate::engine::PipelineEngine;
 #[derive(Debug,Clone)]
@@ -17,8 +16,8 @@ impl PipelineLogger {
     pub fn set_parallel(&mut self,b:bool){
         self.is_parallel=b;
     }
-    pub async fn task_out(&mut self,ctx:&Arc<RwLock<dyn Context<PipelineContextValue>>>,content:&str){
-        let task_name=PipelineEngine::context_with_local(ctx,"$task_name").await;
+    pub  fn task_out(&mut self,ctx:&Arc<RwLock<dyn Context<PipelineContextValue>>>,content:&str){
+        let task_name=PipelineEngine::context_with_local(ctx,"$task_name");
         if !self.contents.contains_key(task_name.as_str()){
             if !self.is_parallel{
                 println!("\x1b[32mRunning Task {}\x1b[0m",task_name);
@@ -35,8 +34,8 @@ impl PipelineLogger {
         let c=c.replace("                       ","");
         println!("  ╰─▶{}",c);
     }
-    pub async fn task_err(&mut self,ctx:&Arc<RwLock<dyn Context<PipelineContextValue>>>,content:&str){
-        let task_name=PipelineEngine::context_with_local(ctx,"$task_name").await;
+    pub  fn task_err(&mut self,ctx:&Arc<RwLock<dyn Context<PipelineContextValue>>>,content:&str){
+        let task_name=PipelineEngine::context_with_local(ctx,"$task_name");
         if !self.contents.contains_key(task_name.as_str()){
             if !self.is_parallel{
                 println!("\x1b[31mRunning Task {}\x1b[0m",task_name);

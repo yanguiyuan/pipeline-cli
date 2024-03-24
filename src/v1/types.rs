@@ -1,9 +1,10 @@
 use std::cmp::Ordering;
 use std::fmt::{Display, Formatter};
 use std::ops::{Add, Div, Mul, Rem, Sub};
-use std::sync::{Arc};
+use std::sync::{Arc, RwLock};
 use crate::context::{Context, PipelineContextValue};
-use crate::engine::{PipelineEngine, PipelineResult};
+use crate::engine::{PipelineEngine};
+use crate::error::PipelineResult;
 use crate::v1::expr::{Expr, FnCallExpr};
 use crate::v1::parser::FnDef;
 #[derive(Debug,Clone)]
@@ -46,16 +47,16 @@ impl FnPtr {
     pub fn set_fn_def(&mut self,fn_def:&FnDef){
         self.fn_def=Some(fn_def.clone())
     }
-    pub async fn call(&mut self, engine:&mut PipelineEngine, ctx:Arc<tokio::sync::RwLock<dyn Context<PipelineContextValue>>>)->PipelineResult<Dynamic>{
+    pub  fn call(&mut self, engine:&mut PipelineEngine, ctx:Arc<RwLock<dyn Context<PipelineContextValue>>>)->PipelineResult<Dynamic>{
         let fn_def= self.fn_def.clone();
         match fn_def {
             None => {
                 let expr=FnCallExpr{ name: self.name.clone(), args: self.params.clone() };
-                engine.eval_fn_call_expr_from_ast(ctx,expr).await
+                engine.eval_fn_call_expr_from_ast(ctx,expr)
             },
             Some(f) => {
                 let blocks=f.body;
-                engine.eval_stmt_blocks_from_ast_with_context(ctx,blocks).await
+                engine.eval_stmt_blocks_from_ast_with_context(ctx,blocks)
             }
         }
 
