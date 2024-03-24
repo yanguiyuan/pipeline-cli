@@ -9,6 +9,7 @@ pub enum Stmt{
     If(Box<Expr>,Box<Vec<Stmt>>,Position),
     While(Box<Expr>,Box<Vec<Stmt>>,Position),
     ArrayAssign(String,Box<Expr>,Box<Expr>,Position),
+    Import(String,Position),
     Noop
 }
 
@@ -37,6 +38,9 @@ impl Stmt{
                 pos.clone()
             }
             Stmt::ArrayAssign(_,_,_,pos)=>{
+                pos.clone()
+            }
+            Stmt::Import(_,pos)=>{
                 pos.clone()
             }
             Stmt::Noop => {

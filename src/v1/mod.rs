@@ -1,5 +1,5 @@
 pub mod parser;
-mod token;
+pub(crate) mod token;
 pub mod lexer;
 pub mod position;
 pub mod stmt;
