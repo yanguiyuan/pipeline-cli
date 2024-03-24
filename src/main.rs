@@ -112,7 +112,7 @@ fn handle_pipeline_err(e:PipelineError){
     }
 }
 
-async fn cli(){
+fn cli(){
     let cli=Cli::parse();
     match &cli.command {
         Commands::Init(t) => {
@@ -209,8 +209,8 @@ async fn cli(){
         }
     }
 }
-#[tokio::main]
-async fn main() ->PipelineResult<()>{
-    cli().await;
+
+fn main() ->PipelineResult<()>{
+    cli();
     Ok(())
 }

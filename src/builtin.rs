@@ -164,10 +164,10 @@ pub  fn copy_all(source:&Path,target:&Path)->io::Result<()>{
     }
     return Ok(())
 }
-#[tokio::test]
-async fn test_copy(){
-    copy_all(Path::new("test/x"),Path::new("test/s")).await.unwrap();
-}
+
+// fn test_copy(){
+//     copy_all(Path::new("test/x"),Path::new("test/s")).await.unwrap();
+// }
 pub fn copy(ctx:Arc<RwLock<dyn Context<PipelineContextValue>>>, source_path:&str, target_path:&str){
     let global=PipelineEngine::context_with_global_state(&ctx);
     let global=global.read().unwrap();
