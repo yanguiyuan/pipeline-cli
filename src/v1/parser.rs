@@ -83,11 +83,11 @@ impl PipelineParser{
         }
 
     }
-    pub fn parse_module(&mut self,module_name:impl AsRef<str>)->PipelineResult<Module>{
+    pub fn parse_module(&mut self,module_name:impl AsRef<str>)->PipelineResult<Option<Module>>{
         let mut current_dir = match env::current_dir() {
             Ok(path) => path,
             Err(e) => {
-                return Err(UnknownModule(module_name.as_ref().into()));
+                return Ok(None);
             }
         };
         let mut script=String::new();
@@ -103,7 +103,7 @@ impl PipelineParser{
                     script=r;
                 }
                 Err(_) => {
-                    return Err(UnknownModule(module_name.as_ref().into()));
+                    return Ok(None)
                 }
             }
         }
@@ -118,7 +118,7 @@ impl PipelineParser{
         for l in lib{
             m.register_script_function(l.name.clone(),l)
         }
-        return Ok(m);
+        return Ok(Some(m));
     }
     pub fn parse_import_stmt(&mut self,)->PipelineResult<Stmt>{
         let (ret,mut pos)=self.token_stream.next();
@@ -129,10 +129,12 @@ impl PipelineParser{
             let (next,pos1)=self.token_stream.next();
             return match next {
                Token::Identifier(id)=>{
-                   pos.add_span(pos1.span);
+                    pos.add_span(pos1.span);
                     let m =self.parse_module(id.clone())?;
-                    self.modules.push(m);
-                   Ok(Stmt::Import(id,pos))
+                    if let Some(m)=m{
+                        self.modules.push(m);
+                    }
+                    Ok(Stmt::Import(id,pos))
                }
                t=>Err(PipelineError::UnexpectedToken(t))
             }

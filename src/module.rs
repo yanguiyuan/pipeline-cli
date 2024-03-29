@@ -5,6 +5,7 @@ use std::{io, thread};
 use std::path::Path;
 use std::process::exit;
 use std::sync::{Arc, RwLock};
+use rand::random;
 use crate::builtin::{cmd, copy, move_file, replace};
 use crate::context::{Context, PipelineContextValue};
 use crate::engine::{PipelineEngine};
@@ -57,7 +58,12 @@ impl Function {
             Function::Script(s) => {
                 let mut e=PipelineEngine::default_with_pipeline();
                 let share_module=PipelineEngine::context_with_shared_module(&ctx);
-                let i=Interpreter::with_shared_module(share_module);
+                let modules=PipelineEngine::context_with_modules(&ctx);
+                let modules=modules.write().unwrap();
+                let mut i=Interpreter::with_shared_module(share_module);
+                for m in modules.iter(){
+                    i.register_module(m.0.clone(),m.1.clone());
+                }
                 e.set_interpreter(&i);
                 let scope=PipelineEngine::context_with_scope(&ctx);
                 let mut scope=scope.write().unwrap();
@@ -195,6 +201,10 @@ impl Module{
                 }
             }
             return Ok(Dynamic::Float(max))
+        });
+        math.register_pipe_function("randomInt",|ctx,args| {
+            let i=random::<i64>();
+            return Ok(Dynamic::Integer(i))
         });
         return math
     }

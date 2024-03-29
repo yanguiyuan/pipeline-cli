@@ -80,7 +80,11 @@ impl PipelineEngine{
         let module=ctx.read().unwrap().value("$shared_module").unwrap();
         let module=module.as_shared_module().unwrap();
         return module
-
+    }
+    pub fn context_with_modules(ctx:&Arc<RwLock<dyn Context<PipelineContextValue>>>)->Arc<RwLock<HashMap<String,Module>>>{
+        let module=ctx.read().unwrap().value("$modules").unwrap();
+        let module=module.as_modules().unwrap();
+        return module
     }
     pub  fn context_with_global_value(ctx:&Arc<RwLock<dyn Context<PipelineContextValue>>>,key:impl AsRef<str>)->String{
         let global=PipelineEngine::context_with_global_state(ctx);

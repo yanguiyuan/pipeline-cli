@@ -243,6 +243,7 @@ impl Interpreter{
             v.push(d);
         }
         let ctx=PipelineEngine::with_value(ctx,"$shared_module",PipelineContextValue::SharedModule(self.main_module.clone()));
+        let ctx=PipelineEngine::with_value(ctx,"$modules",PipelineContextValue::Modules(Arc::new(RwLock::new(self.modules.clone()))));
         let mut r=None;
         if f.name.contains("::"){
             let mut l=f.name.split("::");
