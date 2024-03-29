@@ -170,6 +170,10 @@ impl PipelineEngine{
         self.parser.set_lexer(lexer);
         let stmts=self.parser.parse_stmt_blocks()?;
         self.fn_lib=self.parser.get_fn_lib();
+        let m=self.parser.get_modules();
+        for m0 in m{
+            self.interpreter.register_module(m0.get_name(),m0.clone())
+        }
         for lib in &self.fn_lib{
             self.interpreter.main_module.write().unwrap().register_script_function(lib.clone().name,lib.clone());
         }

@@ -28,9 +28,16 @@ impl Interpreter{
     pub fn register_module(&mut self,name:impl Into<String>,module:Module){
         self.modules.insert(name.into(),module);
     }
-    pub fn merge_into_main_module(&mut self,module_name: impl AsRef<str>){
-        let mut target=self.modules.get(module_name.as_ref()).unwrap();
-        self.main_module.write().unwrap().merge(target)
+    pub fn merge_into_main_module(&mut self,module_name: impl AsRef<str>)->PipelineResult<()>{
+        let mut target=self.modules.get(module_name.as_ref());
+        match target {
+            None => {
+                return Err(PipelineError::UnknownModule(module_name.as_ref().into()));
+            }
+            Some(target) => {self.main_module.write().unwrap().merge(target);}
+        }
+
+        Ok(())
     }
     pub fn get_mut_module(&mut self,name:impl Into<String>)->Option<&mut Module>{
         let m=self.modules.get_mut(name.into().as_str());
@@ -48,7 +55,7 @@ impl Interpreter{
                 self.eval_fn_call_expr_with_context(ctx,*fc)?;
             }
             Stmt::Import(s,_)=>{
-                self.merge_into_main_module(s)
+                self.merge_into_main_module(s)?;
             }
             Stmt::Let(l,_)=>{
                 self.eval_let_stmt(ctx,l)?;

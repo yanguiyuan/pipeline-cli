@@ -1,5 +1,7 @@
-
+use std::{env, fs};
 use crate::error::{PipelineError, PipelineResult};
+use crate::error::PipelineError::UnknownModule;
+use crate::module::Module;
 use crate::v1::lexer::{Lexer, TokenStream};
 use crate::v1::stmt::{IfBranchStmt, IfStmt, Stmt};
 
@@ -11,17 +13,21 @@ use crate::v1::position::{NONE, Position};
 
 pub struct PipelineParser{
     token_stream: TokenStream,
-    fn_lib:Vec<FnDef>
+    fn_lib:Vec<FnDef>,
+    modules:Vec<Module>
 }
 impl PipelineParser{
     pub fn new()->Self{
-        Self{token_stream:TokenStream::new(),fn_lib:vec![]}
+        Self{token_stream:TokenStream::new(),fn_lib:vec![],modules:vec![]}
     }
     pub fn set_lexer(&mut self,lexer: Lexer){
         self.token_stream.set_lexer(lexer)
     }
     pub fn get_fn_lib(&self)->Vec<FnDef>{
         self.fn_lib.clone()
+    }
+    pub fn get_modules(&self)->&Vec<Module>{
+        &self.modules
     }
     pub fn compile_from_token_stream(&mut self)->PipelineResult<AST>{
         let stmts=self.parse_stmt_blocks()?;
@@ -63,6 +69,7 @@ impl PipelineParser{
                             self.parse_while_stmt()
                         }
                         "import"=>{
+
                             self.parse_import_stmt()
                         }
                         t=>Err(PipelineError::UnusedKeyword(t.into()))
@@ -74,6 +81,27 @@ impl PipelineParser{
         }
 
     }
+    pub fn parse_module(&mut self,module_name:impl AsRef<str>)->PipelineResult<Module>{
+        let mut current_dir = match env::current_dir() {
+            Ok(path) => path,
+            Err(e) => {
+                return Err(UnknownModule(module_name.as_ref().into()));
+            }
+        };
+        current_dir.push(format!("{}.kts",module_name.as_ref()));
+        // 打印当前工作目录
+        let script=fs::read_to_string(current_dir).unwrap();
+        let mut parser=PipelineParser::new();
+        let lexer=Lexer::from_script(script);
+        parser.set_lexer(lexer);
+        parser.parse_stmt_blocks()?;
+        let lib=parser.get_fn_lib();
+        let mut m=Module::new(module_name.as_ref());
+        for l in lib{
+            m.register_script_function(l.name.clone(),l)
+        }
+        return Ok(m);
+    }
     pub fn parse_import_stmt(&mut self,)->PipelineResult<Stmt>{
         let (ret,mut pos)=self.token_stream.next();
         if let Token::Keyword(s)=ret.clone(){
@@ -84,6 +112,8 @@ impl PipelineParser{
             return match next {
                Token::Identifier(id)=>{
                    pos.add_span(pos1.span);
+                    let m =self.parse_module(id.clone())?;
+                    self.modules.push(m);
                    Ok(Stmt::Import(id,pos))
                }
                t=>Err(PipelineError::UnexpectedToken(t))
@@ -538,7 +568,7 @@ impl PipelineParser{
     }
     #[allow(unused)]
     pub fn from_token_stream(token_stream:TokenStream)->Self{
-        return Self{ token_stream,fn_lib:vec![] }
+        return Self{ token_stream,fn_lib:vec![],modules:vec![] }
     }
 
 }
