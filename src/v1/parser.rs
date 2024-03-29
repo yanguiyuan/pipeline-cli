@@ -115,8 +115,9 @@ impl PipelineParser{
         let mut else_body=None;
         let ( b,pos)=self.parse_if_branch()?;
         branches.push(b);
-        let (peek,pos1)=self.token_stream.peek();
+
         loop{
+            let (peek,pos1)=self.token_stream.peek();
             match peek.clone() {
                 Token::Keyword(k) if k=="else" =>{
                     self.token_stream.next();
