@@ -24,7 +24,7 @@ impl PipelineLogger {
             }
             self.contents.insert(task_name.clone(),vec![]);
         }
-        let mut c=String::from("[Out]:".to_owned() +content);
+        let  c=String::from("[Out]:".to_owned() +content);
         self.contents.get_mut(task_name.as_str()).unwrap().push(c.clone());
         if self.is_parallel{
             self.flush();

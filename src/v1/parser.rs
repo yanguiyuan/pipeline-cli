@@ -1,7 +1,7 @@
-use crate::engine::PipelineEngine;
+
 use crate::error::{PipelineError, PipelineResult};
 use crate::v1::lexer::{Lexer, TokenStream};
-use crate::v1::stmt::Stmt;
+use crate::v1::stmt::{IfBranchStmt, IfStmt, Stmt};
 
 use crate::v1::token::Token;
 use crate::v1::ast::AST;
@@ -48,7 +48,7 @@ impl PipelineParser{
                         "let"=>{
                             return self.parse_let_stmt()
                         }
-                        "fn"=>{
+                        "fn"|"fun"=>{
                             let (fn_def,pos)=self.parse_fn_def()?;
                             self.fn_lib.push(fn_def);
                             continue
@@ -91,8 +91,7 @@ impl PipelineParser{
         }
         return Err(PipelineError::UnexpectedToken(ret));
     }
-
-    pub fn parse_if_stmt(&mut self)->PipelineResult<Stmt>{
+    fn parse_if_branch(&mut self)->PipelineResult<(IfBranchStmt,Position)>{
         let (ret,mut pos)=self.token_stream.next();
         if let Token::Keyword(s)=ret.clone(){
             if s!="if"{
@@ -106,9 +105,40 @@ impl PipelineParser{
             for i in &blocks{
                 pos.add_span(i.position().span)
             }
-            return Ok(Stmt::If(Box::new(expr),Box::new(blocks), pos))
+            return Ok((IfBranchStmt::new(expr,blocks),pos))
         }
         return Err(PipelineError::UnexpectedToken(ret));
+    }
+
+    pub fn parse_if_stmt(&mut self)->PipelineResult<Stmt>{
+        let mut branches=vec![];
+        let mut else_body=None;
+        let ( b,pos)=self.parse_if_branch()?;
+        branches.push(b);
+        let (peek,pos1)=self.token_stream.peek();
+        loop{
+            match peek.clone() {
+                Token::Keyword(k) if k=="else" =>{
+                    self.token_stream.next();
+                    let (peek0,pos01)=self.token_stream.peek();
+                    if let Token::ParenthesisLeft=peek0{
+                        self.parse_special_token(Token::ParenthesisLeft)?;
+                        let blocks=self.parse_stmt_blocks()?;
+                        self.parse_special_token(Token::ParenthesisRight)?;
+                        else_body=Some(blocks);
+                        break
+                    }
+                    let (b0,pos00)=self.parse_if_branch()?;
+                    branches.push(b0);
+                }
+                _=>{
+                    break
+                }
+            }
+        }
+
+        return Ok(Stmt::If(Box::new(IfStmt::new(branches,else_body)),pos))
+
     }
     pub fn parse_while_stmt(&mut self)->PipelineResult<Stmt>{
         let (ret,mut pos)=self.token_stream.next();
@@ -159,7 +189,7 @@ impl PipelineParser{
     pub fn parse_fn_def(&mut self)->PipelineResult<(FnDef,Position)>{
         let (next,mut pos)=self.token_stream.next();
         match next {
-            Token::Keyword(s) if s.as_str()=="fn"=>{
+            Token::Keyword(s) if s.as_str()=="fn"||s.as_str()=="fun"=>{
                 pos.add_span(2);
                 let (next1,pos1)=self.token_stream.next();
                 if let Token::Identifier(ident)=next1{
@@ -245,6 +275,15 @@ impl PipelineParser{
                         pos0.add_span(1+1+expr.position().span+value.position().span);
                         return Ok(Stmt::ArrayAssign(s,Box::new(expr),Box::new(value),pos0))
 
+                    }
+                    Token::ScopeSymbol=>{
+                        self.token_stream.next();
+                        let (next,pos1)=self.token_stream.next();
+                        let fc_name=next.get_identifier_value();
+                        let (args,pos2)=self.parse_fn_call_args().unwrap();
+                        let fn_expr=FnCallExpr{name:s+"::"+fc_name,args};
+                        pos0.add_span(pos1.span+pos2.span+2);
+                        return Ok(Stmt::FnCall(Box::new(fn_expr),pos));
                     }
                     Token::Dot=>{
                         self.token_stream.next();
@@ -386,6 +425,15 @@ impl PipelineParser{
                         pos.add_span(pos2.span);
                         return Ok(Expr::FnCall(fn_expr,pos));
                     }
+                    Token::ScopeSymbol=>{
+                        self.token_stream.next();
+                        let (next,pos1)=self.token_stream.next();
+                        let fc_name=next.get_identifier_value();
+                        let (args,pos2)=self.parse_fn_call_args().unwrap();
+                        let fn_expr=FnCallExpr{name:ident+"::"+fc_name,args};
+                        pos.add_span(pos1.span+pos2.span+2);
+                        return Ok(Expr::FnCall(fn_expr,pos));
+                    }
                     Token::SquareBracketLeft=>{
                         self.token_stream.next();
                         let e=self.parse_math_expr()?;
@@ -487,6 +535,7 @@ impl PipelineParser{
 
         }
     }
+    #[allow(unused)]
     pub fn from_token_stream(token_stream:TokenStream)->Self{
         return Self{ token_stream,fn_lib:vec![] }
     }

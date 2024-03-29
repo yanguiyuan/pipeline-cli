@@ -23,6 +23,8 @@ pub enum  Token{
     Dot,
     /// :
     Colon,
+    //::
+    ScopeSymbol,
     /// =
     Assign,
     /// ,
@@ -73,6 +75,7 @@ impl Token {
             Token::Minus=>21,
             Token::Div=>22,
             Token::Mod=>23,
+            Token::ScopeSymbol=>24
         }
     }
     pub fn get_identifier_value(&self)->&str{

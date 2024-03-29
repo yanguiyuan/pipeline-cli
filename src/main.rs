@@ -17,6 +17,7 @@ use std::path::{Path, PathBuf};
 use crate::context::Context;
 use crate::engine::{PipelineEngine};
 use crate::error::{PipelineError, PipelineResult};
+use crate::module::Module;
 
 
 #[derive(Parser)]
@@ -107,7 +108,7 @@ fn handle_pipeline_err(e:PipelineError){
             println!("\x1b[31m[Error]:parse failed,due to an reserved and unimplemented keyword \"{k}\".\x1b[0m")
         }
         PipelineError::UnknownModule(m)=>{
-            println!("\x1b[31m[Error]:unknown module \"{m:?}\".\x1b[0m")
+            println!("\x1b[31m[Error]:unknown module \"{m:}\".\x1b[0m")
         }
     }
 }
@@ -120,12 +121,9 @@ fn cli(){
         }
         Commands::Run(path)=>{
             let mut paths=vec![];
-            let f=match path.path.clone() {
-                Some(p)=>{
-                    paths=path.path.clone().unwrap().split(".").map(|s|s.to_string()).collect();
-                }
-                None=>{}
-            };
+            if let Some(p)=path.path.clone(){
+                paths=path.path.clone().unwrap().split(".").map(|s|s.to_string()).collect();
+            }
             if paths.len()<2{
                 paths.push("all".into());
             }
@@ -133,9 +131,11 @@ fn cli(){
                 paths.push("all".into());
             }
             let mut engine=PipelineEngine::default_with_pipeline();
+            let math=Module::with_math_module();
+            engine.register_module(math);
             let script=fs::read_to_string("pipeline.kts").unwrap();
             let stmt=engine.compile_stmt_blocks(script.clone());
-            // println!("{:?}",stmt);
+            // println!("{:#?}",stmt);
             match stmt {
                 Ok(stmt) => {
                     let background=PipelineEngine::background();

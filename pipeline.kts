@@ -1,9 +1,9 @@
 
-import pipe;
-pipeline("test"){
-    step("t1"){
-        workspace("./test")
-        env("Hello","123456")
-        cmd("ls")
-    }
+b=13
+if b>12{
+    println("b>12")
+}else if b<6{
+    println("b<6")
+}else{
+    println("else")
 }

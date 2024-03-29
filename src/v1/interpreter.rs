@@ -56,23 +56,33 @@ impl Interpreter{
             Stmt::Return(e,_)=>{
                 return self.eval_expr(ctx, *e)
             }
-            Stmt::If(b,blocks,_)=>{
-                let d=self.eval_expr(ctx.clone(),*b)?;
-                let d=d.as_bool();
-                return match d {
-                    None => {
-                        Err(PipelineError::ExpectedDataType("bool".into()))
-                    }
-                    Some(d) => {
-                        let mut l=Dynamic::Unit;
-                        if d {
-                            for i in *blocks {
-                                l=self.eval_stmt_with_context(ctx.clone(), i)?;
+            Stmt::If(b,_)=>{
+                for if_branch in b.get_branches(){
+                    let d=self.eval_expr(ctx.clone(),if_branch.get_condition().clone())?;
+                    let d=d.as_bool();
+                    match d {
+                        None => {
+                            return Err(PipelineError::ExpectedDataType("bool".into()))
+                        }
+                        Some(d) => {
+                            let mut l=Dynamic::Unit;
+                            if d {
+                                for i in if_branch.get_body() {
+                                    l=self.eval_stmt_with_context(ctx.clone(), i.clone())?;
+                                }
+                                return Ok(l)
                             }
                         }
-                        Ok(l)
                     }
                 }
+               if let Some(else_body)=b.get_else_body(){
+                   let mut l=Dynamic::Unit;
+                   for i in else_body {
+                       l=self.eval_stmt_with_context(ctx.clone(), i.clone())?;
+                   }
+                   return Ok(l)
+               }
+
             }
             Stmt::ArrayAssign(s,i,v,_)=>{
                 let scope=PipelineEngine::context_with_scope(&ctx);
@@ -118,15 +128,11 @@ impl Interpreter{
 
     pub  fn eval_expr(&mut self,ctx:Arc<RwLock<dyn Context<PipelineContextValue>>>,expr:Expr)->PipelineResult<Dynamic>{
         match expr.clone() {
-            Expr::FnCall(f, _)=>{
+            Expr::FnCall(_, _)=>{
                 let mut ptr=expr.dynamic().as_fn_ptr().unwrap();
                 let mut e=PipelineEngine::default();
                 e.set_interpreter(self);
-                let r=ptr.call(&mut e,ctx);
-                return match r {
-                    Ok(d) => {Ok(d)}
-                    Err(e) => {Err(PipelineError::FunctionUndefined(ptr.name))}
-                }
+                return ptr.call(&mut e,ctx);
             }
             Expr::Variable(i,_)=>{
                 let d=PipelineEngine::context_with_dynamic(&ctx,i.clone());
@@ -230,11 +236,26 @@ impl Interpreter{
             v.push(d);
         }
         let ctx=PipelineEngine::with_value(ctx,"$shared_module",PipelineContextValue::SharedModule(self.main_module.clone()));
-
-        let r=self.main_module.read().unwrap().get_function(f.name.clone());
-        match r {
-            None => {return Err(PipelineError::FunctionUndefined(f.name))}
-            Some(f) => {return f.call(ctx,v)}
+        let mut r=None;
+        if f.name.contains("::"){
+            let mut l=f.name.split("::");
+            let module_name=l.next().unwrap();
+            let m=self.modules.get(module_name);
+            match m {
+                None => {
+                    return Err(PipelineError::UnknownModule(module_name.into()))
+                }
+                Some(module) => {
+                    let function_name=l.next().unwrap();
+                    r=module.get_function(function_name);
+                }
+            }
+        }else{
+            r=self.main_module.read().unwrap().get_function(f.name.clone());
+        }
+        return match r {
+            None => { Err(PipelineError::FunctionUndefined(f.name)) }
+            Some(f) => { f.call(ctx, v) }
         }
     }
 }
