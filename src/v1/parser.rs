@@ -1,4 +1,6 @@
 use std::{env, fs};
+use std::fs::File;
+use std::path::{Path, PathBuf};
 use crate::error::{PipelineError, PipelineResult};
 use crate::error::PipelineError::UnknownModule;
 use crate::module::Module;
@@ -88,9 +90,25 @@ impl PipelineParser{
                 return Err(UnknownModule(module_name.as_ref().into()));
             }
         };
+        let mut script=String::new();
         current_dir.push(format!("{}.kts",module_name.as_ref()));
+        if current_dir.exists(){
+            script=fs::read_to_string(current_dir).unwrap();
+        }else{
+            let home_dir = dirs::home_dir().expect("无法获取用户根目录");
+            let file_path=home_dir.join(".pipeline/package").join(format!("{}.kts",module_name.as_ref()));
+            let read_result=fs::read_to_string(file_path);
+            match read_result {
+                Ok(r) => {
+                    script=r;
+                }
+                Err(_) => {
+                    return Err(UnknownModule(module_name.as_ref().into()));
+                }
+            }
+        }
         // 打印当前工作目录
-        let script=fs::read_to_string(current_dir).unwrap();
+
         let mut parser=PipelineParser::new();
         let lexer=Lexer::from_script(script);
         parser.set_lexer(lexer);

@@ -1,12 +1,4 @@
 
-import hello
+import test
 
-hello()
-r=add(3,2)
-println(r)
-/*
-fun hello(){
-    println("Hello")
-}
-hello()
-*/
+test()
