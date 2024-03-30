@@ -573,6 +573,13 @@ impl PipelineParser{
                 pos.add_span(1+rhs.position().span);
                 Ok(Expr::BinaryExpr(Op::Equal,Box::new(lhs),Box::new(rhs),pos))
             }
+            Token::NotEqual=>{
+                self.token_stream.next();
+                let mut pos=lhs.position();
+                let rhs=self.parse_math_expr()?;
+                pos.add_span(1+rhs.position().span);
+                Ok(Expr::BinaryExpr(Op::NotEqual,Box::new(lhs),Box::new(rhs),pos))
+            }
             _=>Ok(lhs)
         }
     }

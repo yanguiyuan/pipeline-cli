@@ -1,7 +1,10 @@
+use std::any::Any;
 use std::collections::HashMap;
+use std::io;
 use std::io::Read;
 use std::sync::{Arc,RwLock};
 use std::thread::JoinHandle;
+use scanner_rust::Scanner;
 use crate::context::{AppContext, Context, EmptyContext, Scope, ValueContext};
 use crate::context::PipelineContextValue;
 use crate::error::{ PipelineResult};
@@ -117,6 +120,10 @@ impl PipelineEngine{
         let  join =ctx.read().unwrap().value(key).unwrap();
         return join.as_local().unwrap()
     }
+    pub  fn context_with_native(ctx:&Arc<RwLock<dyn Context<PipelineContextValue>>>,key:&str)->Arc<RwLock<dyn Any+Send+Sync>>{
+        let  join =ctx.read().unwrap().value(key).unwrap();
+        return join.as_native().unwrap()
+    }
     pub  fn context_with_env(ctx:&Arc<RwLock<dyn Context<PipelineContextValue>>>)->Arc<RwLock<HashMap<String,String>>>{
         let  join =ctx.read().unwrap().value("$env");
         match join {
@@ -139,6 +146,7 @@ impl PipelineEngine{
         scope.set("true",Dynamic::Boolean(true));
         scope.set("false",Dynamic::Boolean(false));
         let ctx=PipelineEngine::with_value(ctx,"$scope",PipelineContextValue::Scope(Arc::new(RwLock::new(scope))));
+        let ctx=PipelineEngine::with_value(ctx,"$sc",PipelineContextValue::Native(Arc::new(RwLock::new(Scanner::new(io::stdin())))));
         // let ctx=PipelineEngine::with_value(ctx,"$env",PipelineContextValue::Env(Arc::new(RwLock::new(HashMap::new()))));
 
         return ctx

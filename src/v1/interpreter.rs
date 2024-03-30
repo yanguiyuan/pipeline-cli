@@ -205,6 +205,11 @@ impl Interpreter{
                         let r_r=self.eval_expr(ctx.clone(),*r)?;
                         return Ok((l_r==r_r).into())
                     }
+                    Op::NotEqual=>{
+                        let l_r=self.eval_expr(ctx.clone(),*l)?;
+                        let r_r=self.eval_expr(ctx.clone(),*r)?;
+                        return Ok((l_r!=r_r).into())
+                    }
                     Op::Div=>{
                         let l_r=self.eval_expr(ctx.clone(),*l)?;
                         let r_r=self.eval_expr(ctx.clone(),*r)?;

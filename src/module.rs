@@ -2,10 +2,12 @@
 use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
 use std::{io, thread};
+use std::io::Stdin;
 use std::path::Path;
 use std::process::exit;
 use std::sync::{Arc, RwLock};
-use rand::random;
+use rand::{random, Rng};
+use scanner_rust::Scanner;
 use crate::builtin::{cmd, copy, move_file, replace};
 use crate::context::{Context, PipelineContextValue};
 use crate::engine::{PipelineEngine};
@@ -139,6 +141,13 @@ impl Module{
             io::stdin().read_line(&mut input).expect("无法读取输入");
             Ok(Dynamic::String(input))
         });
+        std.register_pipe_function("readInt",|ctx,args|{
+            let sc=PipelineEngine::context_with_native(&ctx,"$sc");
+            let mut sc=sc.write().unwrap();
+            let mut sc=sc.downcast_mut::<Scanner<Stdin>>().unwrap();
+            let i =sc.next_i64().unwrap().unwrap();
+            Ok(Dynamic::Integer(i))
+        });
         std.register_pipe_function("cmd",|ctx,args| {
             let c=args.get(0).unwrap().as_string().unwrap();
             return cmd(c.as_str(),ctx);
@@ -203,6 +212,16 @@ impl Module{
             return Ok(Dynamic::Float(max))
         });
         math.register_pipe_function("randomInt",|ctx,args| {
+            if args.len()>0{
+                let a=args[0].as_integer().unwrap();
+                if args.len()>1{
+                    let b=args[1].as_integer().unwrap();
+                    let random_number = rand::thread_rng().gen_range(a..=b);
+                    return Ok(Dynamic::Integer(random_number))
+                }
+                let random_number = rand::thread_rng().gen_range(0..=a);
+                return Ok(Dynamic::Integer(random_number))
+            }
             let i=random::<i64>();
             return Ok(Dynamic::Integer(i))
         });

@@ -152,8 +152,14 @@ impl Lexer{
                             self.next_char();
                             return r
                         }
+                        ('!','=')=>{
+                            let r= Some((Token::NotEqual,Position::new(self.index,2)));
+                            self.next_char();
+                            self.next_char();
+                            return r
+                        }
                         ('=','=')=>{
-                            let r= Some((Token::Equal,Position::new(self.index,1)));
+                            let r= Some((Token::Equal,Position::new(self.index,2)));
                             self.next_char();
                             self.next_char();
                             return r
