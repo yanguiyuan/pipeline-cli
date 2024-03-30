@@ -2,7 +2,7 @@
 use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
 use std::{io, thread};
-use std::io::Stdin;
+use std::io::{Stdin, Write};
 use std::path::Path;
 use std::process::exit;
 use std::sync::{Arc, RwLock};
@@ -137,12 +137,24 @@ impl Module{
             Ok(Dynamic::Unit)
         });
         std.register_pipe_function("readLine",|_,args|{
+            if args.len()>0{
+                let c=args.get(0).unwrap().as_string().unwrap();
+                print!("{c}");
+                io::stdout().flush().unwrap();
+            }
             let mut input = String::new();
             io::stdin().read_line(&mut input).expect("无法读取输入");
             Ok(Dynamic::String(input))
         });
         std.register_pipe_function("readInt",|ctx,args|{
+
+            if args.len()>0{
+                let c=args.get(0).unwrap().as_string().unwrap();
+                print!("{c}");
+                io::stdout().flush().unwrap();
+            }
             let sc=PipelineEngine::context_with_native(&ctx,"$sc");
+
             let mut sc=sc.write().unwrap();
             let mut sc=sc.downcast_mut::<Scanner<Stdin>>().unwrap();
             let i =sc.next_i64().unwrap().unwrap();
