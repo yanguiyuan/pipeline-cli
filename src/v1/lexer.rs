@@ -74,6 +74,7 @@ impl Lexer{
             keywords: vec!["fn","let","return"],
         }
     }
+    #[allow(unused)]
     pub fn set_chars(&mut self,chars:Vec<char>){
         self.chars=chars;
     }
@@ -135,6 +136,12 @@ impl Lexer{
                             self.next_char();
                             return r
                         },
+                        (':',':')=>{
+                            let r= Some((Token::ScopeSymbol,Position::new(self.index,1)));
+                            self.next_char();
+                            self.next_char();
+                            return r
+                        }
                         (':',_)=>{
                             let r= Some((Token::Colon,Position::new(self.index,1)));
                             self.next_char();
@@ -145,8 +152,14 @@ impl Lexer{
                             self.next_char();
                             return r
                         }
+                        ('!','=')=>{
+                            let r= Some((Token::NotEqual,Position::new(self.index,2)));
+                            self.next_char();
+                            self.next_char();
+                            return r
+                        }
                         ('=','=')=>{
-                            let r= Some((Token::Equal,Position::new(self.index,1)));
+                            let r= Some((Token::Equal,Position::new(self.index,2)));
                             self.next_char();
                             self.next_char();
                             return r
@@ -298,15 +311,16 @@ impl Lexer{
         pos.set_span(v.len()+2);
         return Some((Token::String(v),pos))
     }
+    #[allow(unused)]
     pub fn get_source(&self) -> Vec<char> {
         return self.chars.clone()
     }
     pub fn from_path(path:impl AsRef<str>) ->Self{
         let script=fs::read_to_string(path.as_ref()).unwrap();
-        return Self{  chars: script.chars().collect(), index: 0, col: 0, row: 0, keywords: vec!["let","fn","return","if","while","import"] }
+        return Self{  chars: script.chars().collect(), index: 0, col: 0, row: 0, keywords: vec!["let","fn","fun","return","if","while","import","else"] }
     }
     pub fn from_script(script:impl AsRef<str>)->Self{
-        return Self{  chars: script.as_ref().chars().collect(), index: 0, col: 0, row: 0, keywords: vec!["let","fn","return","if","while","import"] }
+        return Self{  chars: script.as_ref().chars().collect(), index: 0, col: 0, row: 0, keywords: vec!["let","fn","fun","return","if","while","import","else"] }
     }
 
 }

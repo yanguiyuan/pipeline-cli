@@ -1,9 +1,7 @@
 
-import pipe;
-pipeline("test"){
-    step("t1"){
-        workspace("./test")
-        env("Hello","123456")
-        cmd("ls")
-    }
+fun main(){
+   a=readInt("请输入一个数：")
+   b=readInt("请输入一个数：")
+   println(a,b)
 }
+main()

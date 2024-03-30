@@ -1,3 +1,4 @@
+use std::any::Any;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use std::thread::JoinHandle;
@@ -74,7 +75,9 @@ pub enum PipelineContextValue{
     Position(Position),
     Local(String),
     Logger(Arc<RwLock<PipelineLogger>>),
-    SharedModule(Arc<RwLock<Module>>)
+    SharedModule(Arc<RwLock<Module>>),
+    Modules(Arc<RwLock<HashMap<String,Module>>>),
+    Native(Arc<RwLock<dyn Any+Send+Sync>>)
 }
 #[derive(Debug,Clone)]
 pub struct Scope{
@@ -157,6 +160,18 @@ impl PipelineContextValue{
     pub fn as_shared_module(&self)->Option<Arc<RwLock<Module>>>{
         match self {
             PipelineContextValue::SharedModule(s)=>Some( s.clone()),
+            _=>None
+        }
+    }
+    pub fn as_modules(&self)->Option<Arc<RwLock<HashMap<String,Module>>>>{
+        match self {
+            PipelineContextValue::Modules(s)=>Some( s.clone()),
+            _=>None
+        }
+    }
+    pub fn as_native(&self)->Option<Arc<RwLock<dyn Any+Sync+Send>>>{
+        match self {
+            PipelineContextValue::Native(s)=>Some( s.clone()),
             _=>None
         }
     }

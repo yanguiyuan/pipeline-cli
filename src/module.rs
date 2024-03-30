@@ -2,9 +2,12 @@
 use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
 use std::{io, thread};
+use std::io::{Stdin, Write};
 use std::path::Path;
 use std::process::exit;
 use std::sync::{Arc, RwLock};
+use rand::{random, Rng};
+use scanner_rust::Scanner;
 use crate::builtin::{cmd, copy, move_file, replace};
 use crate::context::{Context, PipelineContextValue};
 use crate::engine::{PipelineEngine};
@@ -52,12 +55,27 @@ impl Function {
     pub fn call(&self, ctx:Arc<RwLock<dyn Context<PipelineContextValue>>>,  args:Vec<Dynamic>) ->PipelineResult<Dynamic>{
         match self {
             Function::Native(n) => {
-                let r=(*n)(ctx,args);
-                return r
-
+                return (*n)(ctx,args);
             }
             Function::Script(s) => {
-                Ok(Dynamic::Unit)
+                let mut e=PipelineEngine::default_with_pipeline();
+                let share_module=PipelineEngine::context_with_shared_module(&ctx);
+                let modules=PipelineEngine::context_with_modules(&ctx);
+                let modules=modules.write().unwrap();
+                let mut i=Interpreter::with_shared_module(share_module);
+                for m in modules.iter(){
+                    i.register_module(m.0.clone(),m.1.clone());
+                }
+                e.set_interpreter(&i);
+                let scope=PipelineEngine::context_with_scope(&ctx);
+                let mut scope=scope.write().unwrap();
+                let mut i=0;
+                for a in &s.args{
+                    scope.set(a.name.as_str(),args.get(i).unwrap().clone());
+                    i+=1;
+                }
+                drop(scope);
+                e.eval_stmt_blocks_from_ast_with_context(ctx,s.body.clone())
             }
         }
     }
@@ -68,6 +86,9 @@ impl Module{
             name:name.into(),
             functions:HashMap::new(),
         }
+    }
+    pub fn get_name(&self)->String{
+        return self.name.clone()
     }
     pub fn merge(&mut self,module: &Module){
         for (k,v) in &module.functions{
@@ -115,10 +136,29 @@ impl Module{
             println!();
             Ok(Dynamic::Unit)
         });
-        std.register_pipe_function("readLine",|ctx,args|{
+        std.register_pipe_function("readLine",|_,args|{
+            if args.len()>0{
+                let c=args.get(0).unwrap().as_string().unwrap();
+                print!("{c}");
+                io::stdout().flush().unwrap();
+            }
             let mut input = String::new();
             io::stdin().read_line(&mut input).expect("无法读取输入");
             Ok(Dynamic::String(input))
+        });
+        std.register_pipe_function("readInt",|ctx,args|{
+
+            if args.len()>0{
+                let c=args.get(0).unwrap().as_string().unwrap();
+                print!("{c}");
+                io::stdout().flush().unwrap();
+            }
+            let sc=PipelineEngine::context_with_native(&ctx,"$sc");
+
+            let mut sc=sc.write().unwrap();
+            let mut sc=sc.downcast_mut::<Scanner<Stdin>>().unwrap();
+            let i =sc.next_i64().unwrap().unwrap();
+            Ok(Dynamic::Integer(i))
         });
         std.register_pipe_function("cmd",|ctx,args| {
             let c=args.get(0).unwrap().as_string().unwrap();
@@ -168,18 +208,36 @@ impl Module{
             move_file(ctx,source.as_str(),target.as_str());
             return Ok(Dynamic::Unit)
         });
-        // e.register_fn("max",|ctx,args|Box::pin(async move {
-        //     let first=args.get(0).unwrap();
-        //     let mut max=first.convert_float().unwrap();
-        //     for a in &args{
-        //         let i=a.convert_float().unwrap();
-        //         if i>max{
-        //             max=i
-        //         }
-        //     }
-        //     return Ok(Dynamic::Float(max))
-        // }));
         return std
+    }
+    pub fn with_math_module()->Self{
+        let mut math=Module::new("math");
+        math.register_pipe_function("max",|ctx,args| {
+            let first=args.get(0).unwrap();
+            let mut max=first.convert_float().unwrap();
+            for a in &args{
+                let i=a.convert_float().unwrap();
+                if i>max{
+                    max=i
+                }
+            }
+            return Ok(Dynamic::Float(max))
+        });
+        math.register_pipe_function("randomInt",|ctx,args| {
+            if args.len()>0{
+                let a=args[0].as_integer().unwrap();
+                if args.len()>1{
+                    let b=args[1].as_integer().unwrap();
+                    let random_number = rand::thread_rng().gen_range(a..=b);
+                    return Ok(Dynamic::Integer(random_number))
+                }
+                let random_number = rand::thread_rng().gen_range(0..=a);
+                return Ok(Dynamic::Integer(random_number))
+            }
+            let i=random::<i64>();
+            return Ok(Dynamic::Integer(i))
+        });
+        return math
     }
     pub fn with_pipe_module()->Self{
         let  mut pipe=Module::new("pipe");
@@ -199,7 +257,7 @@ impl Module{
             let mut join_set=join_set.write().unwrap();
             while !join_set.is_empty(){
                let e= join_set.pop().unwrap();
-                e.join().unwrap();
+                e.join().unwrap().unwrap();
             }
             Ok(Dynamic::Unit)
         });
@@ -223,7 +281,7 @@ impl Module{
                     let mut join_set=join_set.write().unwrap();
                     while !join_set.is_empty(){
                         let e= join_set.pop().unwrap();
-                        e.join().unwrap();
+                        e.join().unwrap().unwrap();
                     }
                     return Ok(())
                 });
@@ -245,7 +303,7 @@ impl Module{
                 let mut join_set=join_set.write().unwrap();
                 while !join_set.is_empty(){
                     let e= join_set.pop().unwrap();
-                    e.join().unwrap();
+                    e.join().unwrap().unwrap();
                 }
             }
             Ok(Dynamic::Unit)
@@ -284,25 +342,25 @@ impl Module{
     }
 }
 impl<
-    T:Fn(A,B)->Ret + 'static + std::marker::Send + std::marker::Sync,A:NativeType + From<Dynamic>,
+    T:Fn(A,B)->Ret + 'static + Send + Sync,A:NativeType + From<Dynamic>,
     B:NativeType + From<Dynamic>,
     Ret:NativeType + From<Dynamic>>
 NativeFunction<(A,B)> for T
     where Dynamic: From<Ret>
 {
     fn into_pipe_function(self) -> Arc<PipeFn> {
-        Arc::new(move |ctx:Arc<RwLock<dyn Context< crate::context::PipelineContextValue >>>, args:Vec< crate::v1::types::Dynamic >|->PipelineResult<Dynamic>{
+        Arc::new(move |ctx:Arc<RwLock<dyn Context< PipelineContextValue >>>, args:Vec< Dynamic >|->PipelineResult<Dynamic>{
             let mut it=args.iter();
-            let A=it.next().unwrap().clone().into();
-            let B=it.next().unwrap().clone().into();
-            let r=self(A,B);
+            let a=it.next().unwrap().clone().into();
+            let b=it.next().unwrap().clone().into();
+            let r=self(a,b);
             return Ok(r.into())
         })
     }
 }
-impl <T:Fn(A) + 'static + std::marker::Send + std::marker::Sync,A:NativeType + std::convert::From<v1::types::Dynamic>>NativeFunction<(A)> for T {
+impl <T:Fn(A) + 'static + Send + Sync,A:NativeType + From<Dynamic>>NativeFunction<(A)> for T {
     fn into_pipe_function(self) -> Arc<PipeFn> {
-        Arc::new(move|ctx:Arc<RwLock<dyn Context< crate::context::PipelineContextValue >>>, args:Vec< crate::v1::types::Dynamic >|->PipelineResult<Dynamic>{
+        Arc::new(move|_:Arc<RwLock<dyn Context< PipelineContextValue >>>, args:Vec< Dynamic >|->PipelineResult<Dynamic>{
             self(args[0].clone().into());
             Ok(Dynamic::Unit)
         })
@@ -310,42 +368,6 @@ impl <T:Fn(A) + 'static + std::marker::Send + std::marker::Sync,A:NativeType + s
 }
 #[test]
 fn test_modules(){
-    let mut module=Module::new("std");
-    module.register_native_function("add",|a:i64,b:i64|{
-       return a+b
-    });
-    module.register_pipe_function("parallel",|ctx,args|{
-        let out:PipelineResult<Dynamic>=tokio::runtime::Builder::new_multi_thread()
-            .enable_all()
-            .build()
-            .unwrap()
-            .block_on(async {
-                let pipeline_name=args.get(0).unwrap().as_string().unwrap();
-                let blocks=args.get(1).unwrap().as_fn_ptr().unwrap().fn_def.unwrap().body;
-                let mut e=PipelineEngine::default();
-                let ctx=PipelineEngine::with_value(ctx,"$env",PipelineContextValue::Env(Arc::new(RwLock::new(HashMap::new()))));
-                let pipeline=PipelineEngine::context_with_global_value(&ctx,"path_task").await;
-                let logger=PipelineEngine::context_with_logger(&ctx,"logger").await;
-                let logger=logger.as_logger().unwrap();
-                logger.write().await.set_parallel(true);
-                if pipeline==pipeline_name||pipeline.as_str()=="all"{
-                    let join=PipelineEngine::context_with_join_set(&ctx,"join_set").await;
-                    join.write().await.spawn(async move{
-                        let ctx=PipelineEngine::with_value(ctx,"op_join_set",PipelineContextValue::JoinSet(Arc::new(RwLock::new(tokio::task::JoinSet::new()))));
-                        let ctx=PipelineEngine::with_value(ctx,"$task_name",PipelineContextValue::Local(pipeline_name.into()));
-                        e.eval_stmt_blocks_from_ast_with_context(ctx.clone(),blocks).await.unwrap();
-                        let join_set=PipelineEngine::context_with_join_set(&ctx,"op_join_set").await;
-                        while let Some(r)=join_set.write().await.join_next().await{
-                            r.expect("错误").expect("TODO: panic message");
-                        }
-                        return Ok(())
-                    });
-                }
-                Ok(Dynamic::Unit)
-            });
-        return out.unwrap();
 
-    });
-    let r=module.call("add",vec![12.into(),13.into()]).unwrap();
     println!("{r}")
 }

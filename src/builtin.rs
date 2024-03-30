@@ -132,7 +132,7 @@ fn is_system_gbk_err_command(c:&str)->bool{
     false
 }
 
-pub async fn replace(ctx:Arc<RwLock<dyn Context<PipelineContextValue>>>, source_path:&str, regex:&str, replace:&str){
+pub  fn replace(ctx:Arc<RwLock<dyn Context<PipelineContextValue>>>, source_path:&str, regex:&str, replace:&str){
     let global=PipelineEngine::context_with_global_state(&ctx);
     let global=global.read().unwrap();
     let workspace=global.value("workspace").unwrap();

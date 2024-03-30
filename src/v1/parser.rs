@@ -1,7 +1,11 @@
-use crate::engine::PipelineEngine;
+use std::{env, fs};
+use std::fs::File;
+use std::path::{Path, PathBuf};
 use crate::error::{PipelineError, PipelineResult};
+use crate::error::PipelineError::UnknownModule;
+use crate::module::Module;
 use crate::v1::lexer::{Lexer, TokenStream};
-use crate::v1::stmt::Stmt;
+use crate::v1::stmt::{IfBranchStmt, IfStmt, Stmt};
 
 use crate::v1::token::Token;
 use crate::v1::ast::AST;
@@ -11,17 +15,21 @@ use crate::v1::position::{NONE, Position};
 
 pub struct PipelineParser{
     token_stream: TokenStream,
-    fn_lib:Vec<FnDef>
+    fn_lib:Vec<FnDef>,
+    modules:Vec<Module>
 }
 impl PipelineParser{
     pub fn new()->Self{
-        Self{token_stream:TokenStream::new(),fn_lib:vec![]}
+        Self{token_stream:TokenStream::new(),fn_lib:vec![],modules:vec![]}
     }
     pub fn set_lexer(&mut self,lexer: Lexer){
         self.token_stream.set_lexer(lexer)
     }
     pub fn get_fn_lib(&self)->Vec<FnDef>{
         self.fn_lib.clone()
+    }
+    pub fn get_modules(&self)->&Vec<Module>{
+        &self.modules
     }
     pub fn compile_from_token_stream(&mut self)->PipelineResult<AST>{
         let stmts=self.parse_stmt_blocks()?;
@@ -48,7 +56,7 @@ impl PipelineParser{
                         "let"=>{
                             return self.parse_let_stmt()
                         }
-                        "fn"=>{
+                        "fn"|"fun"=>{
                             let (fn_def,pos)=self.parse_fn_def()?;
                             self.fn_lib.push(fn_def);
                             continue
@@ -63,6 +71,7 @@ impl PipelineParser{
                             self.parse_while_stmt()
                         }
                         "import"=>{
+
                             self.parse_import_stmt()
                         }
                         t=>Err(PipelineError::UnusedKeyword(t.into()))
@@ -74,6 +83,43 @@ impl PipelineParser{
         }
 
     }
+    pub fn parse_module(&mut self,module_name:impl AsRef<str>)->PipelineResult<Option<Module>>{
+        let mut current_dir = match env::current_dir() {
+            Ok(path) => path,
+            Err(e) => {
+                return Ok(None);
+            }
+        };
+        let mut script=String::new();
+        current_dir.push(format!("{}.kts",module_name.as_ref()));
+        if current_dir.exists(){
+            script=fs::read_to_string(current_dir).unwrap();
+        }else{
+            let home_dir = dirs::home_dir().expect("无法获取用户根目录");
+            let file_path=home_dir.join(".pipeline/package").join(format!("{}.kts",module_name.as_ref()));
+            let read_result=fs::read_to_string(file_path);
+            match read_result {
+                Ok(r) => {
+                    script=r;
+                }
+                Err(_) => {
+                    return Ok(None)
+                }
+            }
+        }
+        // 打印当前工作目录
+
+        let mut parser=PipelineParser::new();
+        let lexer=Lexer::from_script(script);
+        parser.set_lexer(lexer);
+        parser.parse_stmt_blocks()?;
+        let lib=parser.get_fn_lib();
+        let mut m=Module::new(module_name.as_ref());
+        for l in lib{
+            m.register_script_function(l.name.clone(),l)
+        }
+        return Ok(Some(m));
+    }
     pub fn parse_import_stmt(&mut self,)->PipelineResult<Stmt>{
         let (ret,mut pos)=self.token_stream.next();
         if let Token::Keyword(s)=ret.clone(){
@@ -83,16 +129,19 @@ impl PipelineParser{
             let (next,pos1)=self.token_stream.next();
             return match next {
                Token::Identifier(id)=>{
-                   pos.add_span(pos1.span);
-                   Ok(Stmt::Import(id,pos))
+                    pos.add_span(pos1.span);
+                    let m =self.parse_module(id.clone())?;
+                    if let Some(m)=m{
+                        self.modules.push(m);
+                    }
+                    Ok(Stmt::Import(id,pos))
                }
                t=>Err(PipelineError::UnexpectedToken(t))
             }
         }
         return Err(PipelineError::UnexpectedToken(ret));
     }
-
-    pub fn parse_if_stmt(&mut self)->PipelineResult<Stmt>{
+    fn parse_if_branch(&mut self)->PipelineResult<(IfBranchStmt,Position)>{
         let (ret,mut pos)=self.token_stream.next();
         if let Token::Keyword(s)=ret.clone(){
             if s!="if"{
@@ -106,9 +155,41 @@ impl PipelineParser{
             for i in &blocks{
                 pos.add_span(i.position().span)
             }
-            return Ok(Stmt::If(Box::new(expr),Box::new(blocks), pos))
+            return Ok((IfBranchStmt::new(expr,blocks),pos))
         }
         return Err(PipelineError::UnexpectedToken(ret));
+    }
+
+    pub fn parse_if_stmt(&mut self)->PipelineResult<Stmt>{
+        let mut branches=vec![];
+        let mut else_body=None;
+        let ( b,pos)=self.parse_if_branch()?;
+        branches.push(b);
+
+        loop{
+            let (peek,pos1)=self.token_stream.peek();
+            match peek.clone() {
+                Token::Keyword(k) if k=="else" =>{
+                    self.token_stream.next();
+                    let (peek0,pos01)=self.token_stream.peek();
+                    if let Token::ParenthesisLeft=peek0{
+                        self.parse_special_token(Token::ParenthesisLeft)?;
+                        let blocks=self.parse_stmt_blocks()?;
+                        self.parse_special_token(Token::ParenthesisRight)?;
+                        else_body=Some(blocks);
+                        break
+                    }
+                    let (b0,pos00)=self.parse_if_branch()?;
+                    branches.push(b0);
+                }
+                _=>{
+                    break
+                }
+            }
+        }
+
+        return Ok(Stmt::If(Box::new(IfStmt::new(branches,else_body)),pos))
+
     }
     pub fn parse_while_stmt(&mut self)->PipelineResult<Stmt>{
         let (ret,mut pos)=self.token_stream.next();
@@ -159,7 +240,7 @@ impl PipelineParser{
     pub fn parse_fn_def(&mut self)->PipelineResult<(FnDef,Position)>{
         let (next,mut pos)=self.token_stream.next();
         match next {
-            Token::Keyword(s) if s.as_str()=="fn"=>{
+            Token::Keyword(s) if s.as_str()=="fn"||s.as_str()=="fun"=>{
                 pos.add_span(2);
                 let (next1,pos1)=self.token_stream.next();
                 if let Token::Identifier(ident)=next1{
@@ -245,6 +326,15 @@ impl PipelineParser{
                         pos0.add_span(1+1+expr.position().span+value.position().span);
                         return Ok(Stmt::ArrayAssign(s,Box::new(expr),Box::new(value),pos0))
 
+                    }
+                    Token::ScopeSymbol=>{
+                        self.token_stream.next();
+                        let (next,pos1)=self.token_stream.next();
+                        let fc_name=next.get_identifier_value();
+                        let (args,pos2)=self.parse_fn_call_args().unwrap();
+                        let fn_expr=FnCallExpr{name:s+"::"+fc_name,args};
+                        pos0.add_span(pos1.span+pos2.span+2);
+                        return Ok(Stmt::FnCall(Box::new(fn_expr),pos));
                     }
                     Token::Dot=>{
                         self.token_stream.next();
@@ -386,6 +476,15 @@ impl PipelineParser{
                         pos.add_span(pos2.span);
                         return Ok(Expr::FnCall(fn_expr,pos));
                     }
+                    Token::ScopeSymbol=>{
+                        self.token_stream.next();
+                        let (next,pos1)=self.token_stream.next();
+                        let fc_name=next.get_identifier_value();
+                        let (args,pos2)=self.parse_fn_call_args().unwrap();
+                        let fn_expr=FnCallExpr{name:ident+"::"+fc_name,args};
+                        pos.add_span(pos1.span+pos2.span+2);
+                        return Ok(Expr::FnCall(fn_expr,pos));
+                    }
                     Token::SquareBracketLeft=>{
                         self.token_stream.next();
                         let e=self.parse_math_expr()?;
@@ -474,6 +573,13 @@ impl PipelineParser{
                 pos.add_span(1+rhs.position().span);
                 Ok(Expr::BinaryExpr(Op::Equal,Box::new(lhs),Box::new(rhs),pos))
             }
+            Token::NotEqual=>{
+                self.token_stream.next();
+                let mut pos=lhs.position();
+                let rhs=self.parse_math_expr()?;
+                pos.add_span(1+rhs.position().span);
+                Ok(Expr::BinaryExpr(Op::NotEqual,Box::new(lhs),Box::new(rhs),pos))
+            }
             _=>Ok(lhs)
         }
     }
@@ -487,8 +593,9 @@ impl PipelineParser{
 
         }
     }
+    #[allow(unused)]
     pub fn from_token_stream(token_stream:TokenStream)->Self{
-        return Self{ token_stream,fn_lib:vec![] }
+        return Self{ token_stream,fn_lib:vec![],modules:vec![] }
     }
 
 }

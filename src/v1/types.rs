@@ -1,3 +1,4 @@
+use std::any::Any;
 use std::cmp::Ordering;
 use std::fmt::{Display, Formatter};
 use std::ops::{Add, Div, Mul, Rem, Sub};
@@ -16,7 +17,8 @@ pub enum Dynamic{
     Boolean(bool),
     Variable(String),
     FnPtr(Box<FnPtr>),
-    Array(Vec<Dynamic>)
+    Array(Vec<Dynamic>),
+    Native(Arc<RwLock<dyn Any+Send+Sync>>)
 }
 #[derive(Debug,Clone)]
 pub struct FnPtr{
@@ -124,6 +126,10 @@ impl Display for Dynamic {
 
                 }
                 write!(f,"]")
+            }
+            Dynamic::Native(v)=>{
+                write!(f,"Native Value")
+
             }
         }
     }

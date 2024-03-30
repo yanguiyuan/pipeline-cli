@@ -1,7 +1,10 @@
+use std::any::Any;
 use std::collections::HashMap;
+use std::io;
 use std::io::Read;
 use std::sync::{Arc,RwLock};
 use std::thread::JoinHandle;
+use scanner_rust::Scanner;
 use crate::context::{AppContext, Context, EmptyContext, Scope, ValueContext};
 use crate::context::PipelineContextValue;
 use crate::error::{ PipelineResult};
@@ -58,68 +61,15 @@ impl PipelineEngine{
     }
    pub(crate) fn default_with_parallel() ->Self{
         let mut default =PipelineEngine::default();
-       //  default.register_fn("parallel",  |ctx, args|Box::pin (async move {
-       //      let pipeline_name=args.get(0).unwrap().as_string().unwrap();
-       //      let blocks=args.get(1).unwrap().as_fn_ptr().unwrap().fn_def.unwrap().body;
-       //      let mut e=PipelineEngine::default();
-       //      let ctx=PipelineEngine::with_value(ctx,"$env",PipelineContextValue::Env(Arc::new(RwLock::new(HashMap::new()))));
-       //      let pipeline=PipelineEngine::context_with_global_value(&ctx,"path_task");
-       //      let logger=PipelineEngine::context_with_logger(&ctx,"logger");
-       //      let logger=logger.as_logger().unwrap();
-       //      logger.write().await.set_parallel(true);
-       //      if pipeline==pipeline_name||pipeline.as_str()=="all"{
-       //          let join=PipelineEngine::context_with_join_set(&ctx,"join_set").await;
-       //          join.write().await.spawn(async move{
-       //              let ctx=PipelineEngine::with_value(ctx,"op_join_set",PipelineContextValue::JoinSet(Arc::new(RwLock::new(tokio::task::JoinSet::new()))));
-       //              let ctx=PipelineEngine::with_value(ctx,"$task_name",PipelineContextValue::Local(pipeline_name.into()));
-       //              e.eval_stmt_blocks_from_ast_with_context(ctx.clone(),blocks).await.unwrap();
-       //              let join_set=PipelineEngine::context_with_join_set(&ctx,"op_join_set").await;
-       //              while let Some(r)=join_set.write().await.join_next().await{
-       //                  r.expect("错误").expect("TODO: panic message");
-       //              }
-       //              return Ok(())
-       //          });
-       //      }
-       //      Ok(Dynamic::Unit)
-       //  }));
-       // default.register_fn("step",  |ctx, args|Box::pin (async move {
-       //     let pipeline_name=args.get(0).unwrap().as_string().unwrap();
-       //     let mut ptr=args.get(1).unwrap().as_fn_ptr().unwrap();
-       //     let mut e=PipelineEngine::default();
-       //     let ctx=PipelineEngine::with_value(ctx,"$env",PipelineContextValue::Env(Arc::new(RwLock::new(HashMap::new()))));
-       //     let pipeline=PipelineEngine::context_with_global_value(&ctx,"path_task").await;
-       //     if pipeline==pipeline_name||pipeline.as_str()=="all"{
-       //         let ctx=PipelineEngine::with_value(ctx,"op_join_set",PipelineContextValue::JoinSet(Arc::new(RwLock::new(tokio::task::JoinSet::new()))));
-       //         let ctx=PipelineEngine::with_value(ctx,"$task_name",PipelineContextValue::Local(pipeline_name.into()));
-       //          ptr.call(&mut e,ctx.clone()).await.unwrap();
-       //         let join_set=PipelineEngine::context_with_join_set(&ctx,"op_join_set").await;
-       //         while let Some(r)=join_set.write().await.join_next().await{
-       //             r.expect("错误").expect("TODO: panic message");
-       //         }
-       //     }
-       //     Ok(Dynamic::Unit)
-       // }));
         return default
+    }
+    pub fn register_module(&mut self,module: Module){
+        self.interpreter.register_module(module.get_name(),module)
     }
     pub fn default_with_pipeline()->Self{
         let mut default=PipelineEngine::default_with_parallel();
         let pipe=Module::with_pipe_module();
         default.interpreter.register_module("pipe",pipe);
-        // default.register_fn("pipeline",  |ctx, args|Box::pin (async move {
-        //     let pipeline_name=args.get(0).unwrap().as_string().unwrap();
-        //     let blocks=args.get(1).unwrap().as_fn_ptr().unwrap().fn_def.unwrap().body;
-        //     let mut e=PipelineEngine::default_with_parallel();
-        //     let pipeline=PipelineEngine::context_with_global_value(&ctx,"path_pipeline").await;
-        //     let ctx=PipelineEngine::with_value(ctx,"join_set",PipelineContextValue::JoinSet(Arc::new(RwLock::new(vec![]))));
-        //     if pipeline==pipeline_name||pipeline=="all"{
-        //         e.eval_stmt_blocks_from_ast_with_context(ctx.clone(),blocks).await.unwrap();
-        //     }
-        //     let join_set=PipelineEngine::context_with_join_set(&ctx,"join_set").await;
-        //     while let Some(r)=join_set.write().await.join_next().await{
-        //         let _=r.expect("错误");
-        //     }
-        //     Ok(Dynamic::Unit)
-        // }));
         return default
     }
     pub fn context_with_dynamic(ctx:&Arc<RwLock<dyn Context<PipelineContextValue>>>,key:impl AsRef<str>)->Option<Dynamic>{
@@ -133,7 +83,11 @@ impl PipelineEngine{
         let module=ctx.read().unwrap().value("$shared_module").unwrap();
         let module=module.as_shared_module().unwrap();
         return module
-
+    }
+    pub fn context_with_modules(ctx:&Arc<RwLock<dyn Context<PipelineContextValue>>>)->Arc<RwLock<HashMap<String,Module>>>{
+        let module=ctx.read().unwrap().value("$modules").unwrap();
+        let module=module.as_modules().unwrap();
+        return module
     }
     pub  fn context_with_global_value(ctx:&Arc<RwLock<dyn Context<PipelineContextValue>>>,key:impl AsRef<str>)->String{
         let global=PipelineEngine::context_with_global_state(ctx);
@@ -151,7 +105,7 @@ impl PipelineEngine{
         scope
     }
     pub  fn context_with_logger(ctx:&Arc<RwLock<dyn Context<PipelineContextValue>>>,key:&str)->PipelineContextValue{
-        let mut join =ctx.read().unwrap().value(key).unwrap();
+        let  join =ctx.read().unwrap().value(key).unwrap();
         return join
     }
     pub fn context_with_position(ctx:&Arc<RwLock<dyn Context<PipelineContextValue>>>)->Position{
@@ -159,15 +113,19 @@ impl PipelineEngine{
         pos.as_position().unwrap()
     }
     pub  fn context_with_global_state(ctx:&Arc<RwLock<dyn Context<PipelineContextValue>>>)->Arc<RwLock<AppContext<String>>>{
-        let mut join =ctx.read().unwrap().value("$global_state").unwrap();
+        let  join =ctx.read().unwrap().value("$global_state").unwrap();
         return join.as_global_state().unwrap()
     }
     pub  fn context_with_local(ctx:&Arc<RwLock<dyn Context<PipelineContextValue>>>,key:&str)->String{
-        let mut join =ctx.read().unwrap().value(key).unwrap();
+        let  join =ctx.read().unwrap().value(key).unwrap();
         return join.as_local().unwrap()
     }
+    pub  fn context_with_native(ctx:&Arc<RwLock<dyn Context<PipelineContextValue>>>,key:&str)->Arc<RwLock<dyn Any+Send+Sync>>{
+        let  join =ctx.read().unwrap().value(key).unwrap();
+        return join.as_native().unwrap()
+    }
     pub  fn context_with_env(ctx:&Arc<RwLock<dyn Context<PipelineContextValue>>>)->Arc<RwLock<HashMap<String,String>>>{
-        let mut join =ctx.read().unwrap().value("$env");
+        let  join =ctx.read().unwrap().value("$env");
         match join {
             None => {panic!("未设置$env,影响cmd运行")}
             Some(j) => {j.as_env().unwrap()}
@@ -188,6 +146,7 @@ impl PipelineEngine{
         scope.set("true",Dynamic::Boolean(true));
         scope.set("false",Dynamic::Boolean(false));
         let ctx=PipelineEngine::with_value(ctx,"$scope",PipelineContextValue::Scope(Arc::new(RwLock::new(scope))));
+        let ctx=PipelineEngine::with_value(ctx,"$sc",PipelineContextValue::Native(Arc::new(RwLock::new(Scanner::new(io::stdin())))));
         // let ctx=PipelineEngine::with_value(ctx,"$env",PipelineContextValue::Env(Arc::new(RwLock::new(HashMap::new()))));
 
         return ctx
@@ -223,6 +182,10 @@ impl PipelineEngine{
         self.parser.set_lexer(lexer);
         let stmts=self.parser.parse_stmt_blocks()?;
         self.fn_lib=self.parser.get_fn_lib();
+        let m=self.parser.get_modules();
+        for m0 in m{
+            self.interpreter.register_module(m0.get_name(),m0.clone())
+        }
         for lib in &self.fn_lib{
             self.interpreter.main_module.write().unwrap().register_script_function(lib.clone().name,lib.clone());
         }
