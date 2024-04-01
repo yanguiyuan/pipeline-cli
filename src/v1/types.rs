@@ -182,8 +182,16 @@ impl Mul for Dynamic{
     fn mul(self, rhs: Self) -> Self::Output {
         match self {
             Dynamic::Integer(i) => {
-                let r=rhs.as_integer().unwrap();
-                Dynamic::Integer(i*r)
+                match rhs {
+                    Dynamic::Integer(r) => {
+                        Dynamic::Integer(i*r)
+                    }
+                    Dynamic::Float(r) => {
+                        Dynamic::Float(i as f64*r)
+                    }
+                    t=>panic!("Integer can not mul {}",t.type_name())
+                }
+
             }
             Dynamic::Float(f) => {
                 let t=rhs.as_float().unwrap();
@@ -200,12 +208,26 @@ impl Div for Dynamic {
     fn div(self, rhs: Self) -> Self::Output {
         match self {
             Dynamic::Integer(i) => {
-                let r=rhs.as_integer().unwrap();
-                Dynamic::Integer(i/r)
+                match rhs {
+                    Dynamic::Integer(r) => {
+                        Dynamic::Integer(i/r)
+                    }
+                    Dynamic::Float(r) => {
+                        Dynamic::Float(i as f64/r)
+                    }
+                    t=>panic!("Integer can not div {}",t.type_name())
+                }
             }
             Dynamic::Float(f) => {
-                let t=rhs.as_float().unwrap();
-                Dynamic::Float(f/t)
+                match rhs {
+                    Dynamic::Integer(r) => {
+                        Dynamic::Float(f/r as f64)
+                    }
+                    Dynamic::Float(r) => {
+                        Dynamic::Float(f/r)
+                    }
+                    t=>panic!("Float can not div {}",t.type_name())
+                }
             }
             _=>panic!("不能进行相乘操作")
         }

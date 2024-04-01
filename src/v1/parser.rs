@@ -1,6 +1,7 @@
 use std::{env, fs};
 use std::fs::File;
 use std::path::{Path, PathBuf};
+use scanner_rust::generic_array::typenum::Exp;
 use crate::error::{PipelineError, PipelineResult};
 use crate::error::PipelineError::UnknownModule;
 use crate::module::Module;
@@ -10,7 +11,7 @@ use crate::v1::stmt::{IfBranchStmt, IfStmt, Stmt};
 use crate::v1::token::Token;
 use crate::v1::ast::AST;
 use crate::v1::expr::{Expr, FnCallExpr, FnClosureExpr, Op};
-use crate::v1::expr::Expr::BinaryExpr;
+use crate::v1::expr::Expr::{BinaryExpr, FnCall};
 use crate::v1::position::{NONE, Position};
 
 pub struct PipelineParser{
@@ -408,40 +409,14 @@ impl PipelineParser{
         }
         return Ok((v,p))
     }
-
-    fn parse_term(&mut self)->PipelineResult<Expr>{
+    fn parse_primary(&mut self)->PipelineResult<Expr>{
         let (token,mut pos)=self.token_stream.next();
         match token {
             Token::String(s) => {
                 Ok(Expr::StringConstant(s,pos))
             }
             Token::Int(i) => {
-                let (peek,_)=self.token_stream.peek();
-                match peek {
-                    Token::Mul=>{
-                        self.token_stream.next();
-                        let right=self.parse_term()?;
-                        let left=Box::new(Expr::IntConstant(i,pos.clone()));
-                        pos.add_span(1+right.position().span);
-                        Ok(BinaryExpr(Op::Mul,left,Box::new(right),pos))
-                    }
-                    Token::Div=>{
-                        self.token_stream.next();
-                        let right=self.parse_term()?;
-                        let left=Box::new(Expr::IntConstant(i,pos.clone()));
-                        pos.add_span(1+right.position().span);
-                        Ok(BinaryExpr(Op::Div,left,Box::new(right),pos))
-                    }
-                    Token::Mod=>{
-                        self.token_stream.next();
-                        let right=self.parse_term()?;
-                        let left=Box::new(Expr::IntConstant(i,pos.clone()));
-                        pos.add_span(1+right.position().span);
-                        Ok(BinaryExpr(Op::Mod,left,Box::new(right),pos))
-                    }
-                    _=>Ok(Expr::IntConstant(i,pos))
-                }
-
+                Ok(Expr::IntConstant(i,pos))
             }
             Token::Float(f) => {
                 Ok(Expr::FloatConstant(f,pos))
@@ -449,33 +424,6 @@ impl PipelineParser{
             Token::Identifier(ident) => {
                 let (peek,mut pos1)=self.token_stream.peek();
                 match peek {
-                    Token::Mul=>{
-                        self.token_stream.next();
-                        let right=self.parse_term()?;
-                        let left=Box::new(Expr::Variable(ident,pos.clone()));
-                        pos.add_span(1+right.position().span);
-                        Ok(BinaryExpr(Op::Mul,left,Box::new(right),pos))
-                    }
-                    Token::Div=>{
-                        self.token_stream.next();
-                        let right=self.parse_term()?;
-                        let left=Box::new(Expr::Variable(ident,pos.clone()));
-                        pos.add_span(1+right.position().span);
-                        Ok(BinaryExpr(Op::Div,left,Box::new(right),pos))
-                    }
-                    Token::Mod=>{
-                        self.token_stream.next();
-                        let right=self.parse_term()?;
-                        let left=Box::new(Expr::Variable(ident,pos.clone()));
-                        pos.add_span(1+right.position().span);
-                        Ok(BinaryExpr(Op::Mod,left,Box::new(right),pos))
-                    }
-                    Token::BraceLeft=>{
-                        let (args,pos2)=self.parse_fn_call_args().unwrap();
-                        let fn_expr=FnCallExpr{name:ident,args};
-                        pos.add_span(pos2.span);
-                        return Ok(Expr::FnCall(fn_expr,pos));
-                    }
                     Token::ScopeSymbol=>{
                         self.token_stream.next();
                         let (next,pos1)=self.token_stream.next();
@@ -496,6 +444,141 @@ impl PipelineParser{
                 }
             }
             _=>Err(PipelineError::UnexpectedToken(token))
+        }
+    }
+    fn parse_function_call_chain(&mut self)->PipelineResult<Expr>{
+        let mut lhs=self.parse_primary()?;
+        loop{
+            let (peek,pos)=self.token_stream.peek();
+            if let Token::Dot=peek{
+                self.token_stream.next();
+                let (next, pos0)=self.token_stream.next();
+                let name=next.get_identifier_value();
+                let (mut fn_call,mut pos)=self.parse_fn_call_expr(name,pos0)?;
+                pos.add_span(lhs.position().span+1);
+                fn_call.args.insert(0,lhs);
+                let expr=FnCall(fn_call,pos);
+                lhs=expr;
+            }else{
+                return Ok(lhs)
+            }
+        }
+    }
+    fn parse_term(&mut self)->PipelineResult<Expr>{
+        let lhs=self.parse_function_call_chain()?;
+        let (token,mut pos)=self.token_stream.peek();
+        match token {
+            Token::Mul=>{
+                self.token_stream.next();
+                let right=self.parse_term()?;
+                pos.add_span(1+right.position().span+lhs.position().span);
+                Ok(BinaryExpr(Op::Mul,Box::new(lhs),Box::new(right),pos))
+            }
+            Token::Div=>{
+                self.token_stream.next();
+                let right=self.parse_term()?;
+                pos.add_span(1+right.position().span+lhs.position().span);
+                Ok(BinaryExpr(Op::Div,Box::new(lhs),Box::new(right),pos))
+            }
+            Token::Mod=>{
+                self.token_stream.next();
+                let right=self.parse_term()?;
+                pos.add_span(1+right.position().span+lhs.position().span);
+                Ok(BinaryExpr(Op::Mod,Box::new(lhs),Box::new(right),pos))
+            }
+            Token::Dot=>{
+                self.token_stream.next();
+                let (next, pos0)=self.token_stream.next();
+                let name=next.get_identifier_value();
+                let (mut fn_call,mut pos)=self.parse_fn_call_expr(name,pos0)?;
+                pos.add_span(lhs.position().span+1);
+                fn_call.args.insert(0,lhs);
+                Ok(FnCall(fn_call,pos))
+            }
+            // Token::String(s) => {
+            //     Ok(Expr::StringConstant(s,pos))
+            // }
+            // Token::Int(i) => {
+            //     let (peek,_)=self.token_stream.peek();
+            //     match peek {
+            //         Token::Mul=>{
+            //             self.token_stream.next();
+            //             let right=self.parse_term()?;
+            //             let left=Box::new(Expr::IntConstant(i,pos.clone()));
+            //             pos.add_span(1+right.position().span);
+            //             Ok(BinaryExpr(Op::Mul,left,Box::new(right),pos))
+            //         }
+            //         Token::Div=>{
+            //             self.token_stream.next();
+            //             let right=self.parse_term()?;
+            //             let left=Box::new(Expr::IntConstant(i,pos.clone()));
+            //             pos.add_span(1+right.position().span);
+            //             Ok(BinaryExpr(Op::Div,left,Box::new(right),pos))
+            //         }
+            //         Token::Mod=>{
+            //             self.token_stream.next();
+            //             let right=self.parse_term()?;
+            //             let left=Box::new(Expr::IntConstant(i,pos.clone()));
+            //             pos.add_span(1+right.position().span);
+            //             Ok(BinaryExpr(Op::Mod,left,Box::new(right),pos))
+            //         }
+            //         _=>Ok(Expr::IntConstant(i,pos))
+            //     }
+            //
+            // }
+            // Token::Float(f) => {
+            //     Ok(Expr::FloatConstant(f,pos))
+            // }
+            // Token::Identifier(ident) => {
+            //     let (peek,mut pos1)=self.token_stream.peek();
+            //     match peek {
+            //         Token::Mul=>{
+            //             self.token_stream.next();
+            //             let right=self.parse_term()?;
+            //             let left=Box::new(Expr::Variable(ident,pos.clone()));
+            //             pos.add_span(1+right.position().span);
+            //             Ok(BinaryExpr(Op::Mul,left,Box::new(right),pos))
+            //         }
+            //         Token::Div=>{
+            //             self.token_stream.next();
+            //             let right=self.parse_term()?;
+            //             let left=Box::new(Expr::Variable(ident,pos.clone()));
+            //             pos.add_span(1+right.position().span);
+            //             Ok(BinaryExpr(Op::Div,left,Box::new(right),pos))
+            //         }
+            //         Token::Mod=>{
+            //             self.token_stream.next();
+            //             let right=self.parse_term()?;
+            //             let left=Box::new(Expr::Variable(ident,pos.clone()));
+            //             pos.add_span(1+right.position().span);
+            //             Ok(BinaryExpr(Op::Mod,left,Box::new(right),pos))
+            //         }
+            //         Token::BraceLeft=>{
+            //             let (args,pos2)=self.parse_fn_call_args().unwrap();
+            //             let fn_expr=FnCallExpr{name:ident,args};
+            //             pos.add_span(pos2.span);
+            //             return Ok(Expr::FnCall(fn_expr,pos));
+            //         }
+            //         Token::ScopeSymbol=>{
+            //             self.token_stream.next();
+            //             let (next,pos1)=self.token_stream.next();
+            //             let fc_name=next.get_identifier_value();
+            //             let (args,pos2)=self.parse_fn_call_args().unwrap();
+            //             let fn_expr=FnCallExpr{name:ident+"::"+fc_name,args};
+            //             pos.add_span(pos1.span+pos2.span+2);
+            //             return Ok(Expr::FnCall(fn_expr,pos));
+            //         }
+            //         Token::SquareBracketLeft=>{
+            //             self.token_stream.next();
+            //             let e=self.parse_math_expr()?;
+            //             self.parse_special_token(Token::SquareBracketRight)?;
+            //             pos1.add_span(1+e.position().span+1);
+            //             return Ok(Expr::Index(ident,Box::new(e),pos1))
+            //         }
+            //         _=> Ok(Expr::Variable(ident,pos))
+            //     }
+            // }
+            _=>Ok(lhs)
         }
     }
     fn parse_math_expr(&mut self)->PipelineResult<Expr>{

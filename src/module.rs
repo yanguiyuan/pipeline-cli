@@ -162,6 +162,10 @@ impl Module{
             }
 
         });
+        std.register_pipe_function("type",|_,args|{
+            let c=args.get(0).unwrap();
+            Ok(Dynamic::String(c.type_name()))
+        });
         std.register_pipe_function("readInt",|ctx,args|{
 
             if args.len()>0{

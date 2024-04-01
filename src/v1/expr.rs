@@ -15,7 +15,8 @@ pub enum Expr{
     BinaryExpr(Op,Box<Expr>,Box<Expr>,Position),
     Array(Vec<Expr>,Position),
     Map(Vec<(Expr,Expr)>,Position),
-    Index(String,Box<Expr>,Position)
+    Index(String,Box<Expr>,Position),
+    None(Position)
 }
 #[derive(Debug,Clone)]
 pub enum Op{
@@ -58,6 +59,7 @@ impl Expr {
             Expr::Array(_,pos)=>{pos.clone()}
             Expr::Index(_,_,pos)=>{pos.clone()}
             Expr::Map(_,pos)=>{pos.clone()}
+            Expr::None(pos)=>{pos.clone()}
         }
     }
     pub fn any(&self)-> Box<dyn Any> {
