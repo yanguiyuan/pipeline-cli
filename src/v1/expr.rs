@@ -2,7 +2,7 @@ use std::any::Any;
 use std::collections::HashMap;
 use crate::v1::parser::FnDef;
 use crate::v1::position::Position;
-use crate::v1::types::Dynamic;
+use crate::v1::types::{Dynamic};
 
 #[derive(Debug,Clone)]
 pub enum Expr{
@@ -16,7 +16,28 @@ pub enum Expr{
     Array(Vec<Expr>,Position),
     Map(Vec<(Expr,Expr)>,Position),
     Index(String,Box<Expr>,Position),
+    Struct(StructExpr,Position),
+    /// a=Person::new()
+    /// a.name  -> MemberAccess
+    MemberAccess(Box<Expr>,String,Position),
     None(Position)
+}
+#[derive(Debug,Clone)]
+pub struct StructExpr{
+    name:String,
+    props:HashMap<String,Expr>
+}
+
+impl StructExpr {
+    pub fn new(name:String,props:HashMap<String,Expr>)->Self{
+        Self{name,props}
+    }
+    pub fn get_name(&self)->&str{
+        &self.name
+    }
+    pub fn get_props(&self)->&HashMap<String,Expr>{
+        &self.props
+    }
 }
 #[derive(Debug,Clone)]
 pub enum Op{
@@ -60,6 +81,8 @@ impl Expr {
             Expr::Index(_,_,pos)=>{pos.clone()}
             Expr::Map(_,pos)=>{pos.clone()}
             Expr::None(pos)=>{pos.clone()}
+            Expr::Struct(_,pos)=>{pos.clone()}
+            Expr::MemberAccess(_,_,pos)=>pos.clone()
         }
     }
     pub fn any(&self)-> Box<dyn Any> {

@@ -7,7 +7,7 @@ use crate::error::{PipelineError, PipelineResult};
 use crate::module::{ Module};
 use crate::v1::expr::{Expr, FnCallExpr, Op};
 use crate::v1::stmt::Stmt;
-use crate::v1::types::Dynamic;
+use crate::v1::types::{Dynamic, Struct};
 
 #[derive(Clone,Debug)]
 pub struct Interpreter{
@@ -246,6 +246,20 @@ impl Interpreter{
                         return Ok(l_r%r_r)
                     }
                 }
+            }
+            Expr::Struct(e,_)=>{
+                let mut props=HashMap::new();
+                for (k,i) in e.get_props(){
+                    let v=self.eval_expr(ctx.clone(),i.clone())?;
+                    props.insert(k.into(),v);
+                }
+                Ok(Dynamic::Struct(Box::new(Struct::new(e.get_name().into(),props))))
+            }
+            Expr::MemberAccess(father,prop,_)=>{
+                let obj=self.eval_expr(ctx,*father)?;
+                let obj=obj.as_struct().unwrap();
+                let r=obj.get_prop(&prop).unwrap();
+                return Ok(r)
             }
             _=>Ok(expr.dynamic())
         }

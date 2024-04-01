@@ -8,7 +8,7 @@ use std::sync::{Arc, RwLock};
 use crate::context::{Context, PipelineContextValue};
 use crate::engine::{PipelineEngine};
 use crate::error::PipelineResult;
-use crate::v1::expr::{Expr, FnCallExpr};
+use crate::v1::expr::{Expr, FnCallExpr, StructExpr};
 use crate::v1::parser::FnDef;
 #[derive(Debug,Clone)]
 pub enum Dynamic{
@@ -21,7 +21,24 @@ pub enum Dynamic{
     FnPtr(Box<FnPtr>),
     Array(Vec<Dynamic>),
     Map(HashMap<Dynamic,Dynamic>),
+    Struct(Box<Struct>),
     Native(Arc<RwLock<dyn Any+Send+Sync>>)
+}
+#[derive(Debug,Clone)]
+pub struct Struct{
+    name:String,
+    props:HashMap<String,Dynamic>
+}
+
+impl Struct {
+    pub fn new(name:String,props:HashMap<String,Dynamic>)->Self{
+        Self{
+            name,props
+        }
+    }
+    pub fn get_prop(&self,name:&str)->Option<Dynamic>{
+        self.props.get(name).map(|e|e.clone())
+    }
 }
 #[derive(Debug,Clone)]
 pub struct FnPtr{
@@ -141,6 +158,17 @@ impl Display for Dynamic {
                 }
                 write!(f,"}}")
             }
+            Dynamic::Struct(s)=>{
+                write!(f, "{}{{",s.name).expect("write失败");
+                for (i,a) in s.props.iter().enumerate(){
+                    write!(f, "{}:{}",a.0,a.1).expect("write失败");
+                    if i<s.props.len()-1{
+                        write!(f, ",").expect("write失败");
+                    }
+
+                }
+                write!(f,"}}")
+            }
             Dynamic::Native(v)=>{
                 write!(f,"Native Value")
             }
@@ -168,11 +196,7 @@ impl Hash for Dynamic{
             Dynamic::Boolean(b) => {
                 b.hash(state)
             }
-            Dynamic::Variable(a) => {}
-            Dynamic::FnPtr(_) => {}
-            Dynamic::Array(_) => {}
-            Dynamic::Map(_) => {}
-            Dynamic::Native(_) => {}
+            _=>{}
         }
     }
 }
@@ -354,6 +378,9 @@ impl Dynamic{
             Dynamic::Native(_) => {
                 "Native".into()
             }
+            Dynamic::Struct(s)=>{
+                format!("Struct {}",s.name).into()
+            }
         }
     }
     pub fn is_variable(&self)->bool{
@@ -427,6 +454,12 @@ impl Dynamic{
     pub fn as_array(&self)->Option<Vec<Dynamic>>{
         match self {
             Dynamic::Array(i)=>Some(i.clone()),
+            _=>None
+        }
+    }
+    pub fn as_struct(&self)->Option<Box<Struct>>{
+        match self {
+            Dynamic::Struct(i)=>Some(i.clone()),
             _=>None
         }
     }

@@ -1,4 +1,5 @@
 use std::{env, fs};
+use std::collections::HashMap;
 use std::fs::File;
 use std::path::{Path, PathBuf};
 use scanner_rust::generic_array::typenum::Exp;
@@ -10,7 +11,7 @@ use crate::v1::stmt::{IfBranchStmt, IfStmt, Stmt};
 
 use crate::v1::token::Token;
 use crate::v1::ast::AST;
-use crate::v1::expr::{Expr, FnCallExpr, FnClosureExpr, Op};
+use crate::v1::expr::{Expr, FnCallExpr, FnClosureExpr, Op, StructExpr};
 use crate::v1::expr::Expr::{BinaryExpr, FnCall};
 use crate::v1::position::{NONE, Position};
 
@@ -440,6 +441,34 @@ impl PipelineParser{
                         pos1.add_span(1+e.position().span+1);
                         return Ok(Expr::Index(ident,Box::new(e),pos1))
                     }
+                    Token::ParenthesisLeft=>{
+                        let mut props=HashMap::new();
+                        self.token_stream.next();
+                        loop{
+                            let (peek,pos2)=self.token_stream.peek();
+                            match peek {
+                               Token::Comma=>{
+                                   pos.add_span(1);
+                                   self.token_stream.next();
+                                   continue
+                               }
+                                Token::ParenthesisRight=>{
+                                    pos.add_span(1);
+                                    self.token_stream.next();
+                                    break;
+                                }
+                                Token::Identifier(s)=>{
+                                    self.token_stream.next();
+                                    self.parse_special_token(Token::Colon)?;
+                                    let expr=self.parse_expr()?;
+                                    pos.add_span(pos2.span+1+expr.position().span);
+                                    props.insert(s,expr);
+                                }
+                                t=>return Err(PipelineError::UnexpectedToken(t))
+                            }
+                        }
+                        return Ok(Expr::Struct(StructExpr::new(ident,props),pos))
+                    }
                     _=> Ok(Expr::Variable(ident,pos))
                 }
             }
@@ -454,11 +483,20 @@ impl PipelineParser{
                 self.token_stream.next();
                 let (next, pos0)=self.token_stream.next();
                 let name=next.get_identifier_value();
-                let (mut fn_call,mut pos)=self.parse_fn_call_expr(name,pos0)?;
-                pos.add_span(lhs.position().span+1);
-                fn_call.args.insert(0,lhs);
-                let expr=FnCall(fn_call,pos);
-                lhs=expr;
+                let (peek1,pos1)=self.token_stream.peek();
+                if let Token::BraceLeft=peek1{
+                    let (mut fn_call,mut pos)=self.parse_fn_call_expr(name,pos0)?;
+                    pos.add_span(lhs.position().span+1);
+                    fn_call.args.insert(0,lhs.clone());
+                    let expr=FnCall(fn_call,pos);
+                    lhs=expr;
+                }else{
+                    let mut pos00=lhs.position();
+                    pos00.add_span(1+pos0.span);
+                    let member_access=Expr::MemberAccess(Box::new(lhs.clone()),name.into(),pos00);
+                    lhs=member_access;
+                }
+
             }else{
                 return Ok(lhs)
             }
