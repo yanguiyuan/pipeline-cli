@@ -69,7 +69,7 @@ impl Interpreter{
                     let d=d.as_bool();
                     match d {
                         None => {
-                            return Err(PipelineError::ExpectedDataType("bool".into()))
+                            return Err(PipelineError::ExpectedType("bool".into()))
                         }
                         Some(d) => {
                             let mut l=Dynamic::Unit;
@@ -107,7 +107,7 @@ impl Interpreter{
                 let d=d.as_bool();
                 return match d {
                     None => {
-                        Err(PipelineError::ExpectedDataType("bool".into()))
+                        Err(PipelineError::ExpectedType("bool".into()))
                     }
                     Some(d) => {
                         let mut condition=d;
@@ -159,6 +159,15 @@ impl Interpreter{
                 }
                 Ok(Dynamic::Array(dv))
             }
+            Expr::Map(v,_)=>{
+                let mut dv=HashMap::new();
+                for e in v{
+                    let key=self.eval_expr(ctx.clone(), e.0)?;
+                    let value=self.eval_expr(ctx.clone(), e.1)?;
+                    dv.insert(key,value);
+                }
+                Ok(Dynamic::Map(dv))
+            }
             Expr::Index(s,e,_)=>{
                 let d=PipelineEngine::context_with_dynamic(&ctx,s.clone());
                 match d {
@@ -166,10 +175,26 @@ impl Interpreter{
                         Err(PipelineError::VariableUndefined(s))
                     }
                     Some(d) => {
-                        let a=d.as_array().unwrap();
-                        let index=self.eval_expr(ctx,*e)?;
-                        let index=index.as_integer().unwrap();
-                        Ok(a[index as usize].clone())
+                        match d {
+                            Dynamic::Array(a) => {
+                                let index=self.eval_expr(ctx,*e)?;
+                                let index=index.as_integer().unwrap();
+                                Ok(a[index as usize].clone())
+                            }
+                            Dynamic::Map(m) => {
+                                let index=self.eval_expr(ctx,*e)?;
+                                Ok(m[&index].clone())
+                            }
+                            Dynamic::String(s)=>{
+                                let index=self.eval_expr(ctx,*e)?;
+                                let index=index.as_integer().unwrap();
+                                Ok(String::from(s.chars().nth(index as usize).unwrap()).into())
+                            }
+                            t=>{
+                                return Err(PipelineError::UndefinedOperation(format!("index [] to {}",t.type_name())))
+                            }
+                        }
+
                     }
                 }
             }
@@ -246,7 +271,7 @@ impl Interpreter{
                 continue
             }else if d.is_variable(){
                 let d=d.as_variable().unwrap();
-                let r=PipelineEngine::context_with_dynamic(&ctx,d.as_str()).await.unwrap();
+                let r=PipelineEngine::context_with_dynamic(&ctx,d.as_str()).unwrap();
                 v.push(r);
                 continue
             }

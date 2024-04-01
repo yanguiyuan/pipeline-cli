@@ -1,4 +1,5 @@
 use std::any::Any;
+use std::collections::HashMap;
 use crate::v1::parser::FnDef;
 use crate::v1::position::Position;
 use crate::v1::types::Dynamic;
@@ -13,6 +14,7 @@ pub enum Expr{
     Variable(String,Position),
     BinaryExpr(Op,Box<Expr>,Box<Expr>,Position),
     Array(Vec<Expr>,Position),
+    Map(Vec<(Expr,Expr)>,Position),
     Index(String,Box<Expr>,Position)
 }
 #[derive(Debug,Clone)]
@@ -55,6 +57,7 @@ impl Expr {
             Expr::BinaryExpr(_,_,_,pos)=>{pos.clone()}
             Expr::Array(_,pos)=>{pos.clone()}
             Expr::Index(_,_,pos)=>{pos.clone()}
+            Expr::Map(_,pos)=>{pos.clone()}
         }
     }
     pub fn any(&self)-> Box<dyn Any> {

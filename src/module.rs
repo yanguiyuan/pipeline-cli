@@ -146,6 +146,22 @@ impl Module{
             io::stdin().read_line(&mut input).expect("无法读取输入");
             Ok(Dynamic::String(input))
         });
+        std.register_pipe_function("len",|_,args|{
+            let c=args.get(0).unwrap();
+            match c {
+                Dynamic::String(s) => {
+                    Ok(Dynamic::Integer(s.len() as i64))
+                }
+                Dynamic::Array(a) => {
+                    Ok(Dynamic::Integer(a.len() as i64))
+                }
+                Dynamic::Map(m) => {
+                    Ok(Dynamic::Integer(m.len() as i64))
+                }
+                t=>return Err(PipelineError::UnexpectedType(t.type_name()))
+            }
+
+        });
         std.register_pipe_function("readInt",|ctx,args|{
 
             if args.len()>0{

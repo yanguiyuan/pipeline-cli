@@ -1,6 +1,8 @@
 use std::any::Any;
 use std::cmp::Ordering;
+use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
+use std::hash::{Hash, Hasher};
 use std::ops::{Add, Div, Mul, Rem, Sub};
 use std::sync::{Arc, RwLock};
 use crate::context::{Context, PipelineContextValue};
@@ -18,6 +20,7 @@ pub enum Dynamic{
     Variable(String),
     FnPtr(Box<FnPtr>),
     Array(Vec<Dynamic>),
+    Map(HashMap<Dynamic,Dynamic>),
     Native(Arc<RwLock<dyn Any+Send+Sync>>)
 }
 #[derive(Debug,Clone)]
@@ -127,14 +130,52 @@ impl Display for Dynamic {
                 }
                 write!(f,"]")
             }
+            Dynamic::Map(v)=>{
+                write!(f, "{{").expect("write失败");
+                for (i,a) in v.iter().enumerate(){
+                    write!(f, "{}:{}",a.0,a.1).expect("write失败");
+                    if i<v.len()-1{
+                        write!(f, ",").expect("write失败");
+                    }
+
+                }
+                write!(f,"}}")
+            }
             Dynamic::Native(v)=>{
                 write!(f,"Native Value")
-
             }
         }
     }
 }
 
+impl Eq for Dynamic {
+}
+impl Hash for Dynamic{
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        match self {
+            Dynamic::Unit => {
+
+            }
+            Dynamic::Integer(i) => {
+                i.hash(state)
+            }
+            Dynamic::Float(f) => {
+
+            }
+            Dynamic::String(s) => {
+                s.hash(state)
+            }
+            Dynamic::Boolean(b) => {
+                b.hash(state)
+            }
+            Dynamic::Variable(a) => {}
+            Dynamic::FnPtr(_) => {}
+            Dynamic::Array(_) => {}
+            Dynamic::Map(_) => {}
+            Dynamic::Native(_) => {}
+        }
+    }
+}
 impl Mul for Dynamic{
     type Output = Dynamic;
 
@@ -259,6 +300,40 @@ impl Sub for Dynamic {
     }
 }
 impl Dynamic{
+    pub fn type_name(&self)->String{
+        match self {
+            Dynamic::Unit => {
+                "Uint".into()
+            }
+            Dynamic::Integer(_) => {
+                "Integer".into()
+            }
+            Dynamic::Float(_) => {
+                "Float".into()
+            }
+            Dynamic::String(_) => {
+                "String".into()
+            }
+            Dynamic::Boolean(_) => {
+                "Boolean".into()
+            }
+            Dynamic::Variable(_) => {
+                "Variable".into()
+            }
+            Dynamic::FnPtr(_) => {
+                "Function".into()
+            }
+            Dynamic::Array(_) => {
+                "Array".into()
+            }
+            Dynamic::Map(_) => {
+                "Map".into()
+            }
+            Dynamic::Native(_) => {
+                "Native".into()
+            }
+        }
+    }
     pub fn is_variable(&self)->bool{
         match self {
             Dynamic::Variable(_) => true,

@@ -98,8 +98,11 @@ fn handle_pipeline_err(e:PipelineError){
         PipelineError::VariableUndefined(name) => {
             println!("\x1b[31m[Error]:eval failed,variable \"{name}\" undefined.\x1b[0m")
         }
-        PipelineError::ExpectedDataType(s) => {
+        PipelineError::ExpectedType(s) => {
             println!("\x1b[31m[Error]:eval failed,expected type \"{s}\".\x1b[0m")
+        }
+        PipelineError::UnexpectedType(s)=>{
+            println!("\x1b[31m[Error]:eval failed,unexpected type \"{s}\".\x1b[0m")
         }
         PipelineError::UnexpectedToken(t)=> {
             println!("\x1b[31m[Error]:parse failed,due to an unexpected token \"{t:?}\".\x1b[0m")
@@ -109,6 +112,9 @@ fn handle_pipeline_err(e:PipelineError){
         }
         PipelineError::UnknownModule(m)=>{
             println!("\x1b[31m[Error]:unknown module \"{m:}\".\x1b[0m")
+        }
+        PipelineError::UndefinedOperation(msg)=>{
+            println!("\x1b[31m[Error]:undefined operation \"{msg:}\".\x1b[0m")
         }
     }
 }

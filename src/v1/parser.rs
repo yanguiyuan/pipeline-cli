@@ -523,9 +523,6 @@ impl PipelineParser{
         let (next,mut pos)=self.token_stream.next();
         let mut v=vec![];
         loop{
-            let e=self.parse_expr()?;
-            v.push(e.clone());
-            pos.add_span(e.position().span);
             let (peek,pos0)=self.token_stream.peek();
             match peek {
                 Token::Comma=>{
@@ -538,16 +535,53 @@ impl PipelineParser{
                     pos.add_span(1);
                     break
                 }
-                t=>return Err(PipelineError::UnexpectedToken(t))
+                // t=>return Err(PipelineError::UnexpectedToken(t))
+                t=>{
+                    let e=self.parse_expr()?;
+                    v.push(e.clone());
+                    pos.add_span(e.position().span);
+                }
             }
         }
         return Ok(Expr::Array(v,pos))
 
     }
+    pub fn parse_map(&mut self)->PipelineResult<Expr>{
+        let (next,mut pos)=self.token_stream.next();
+        let mut v=vec![];
+        loop{
+            let (peek,pos0)=self.token_stream.peek();
+            match peek {
+                Token::Comma=>{
+                    self.token_stream.next();
+                    pos.add_span(1);
+                    continue
+                }
+                Token::ParenthesisRight=>{
+                    self.token_stream.next();
+                    pos.add_span(1);
+                    break
+                }
+                // t=>return Err(PipelineError::UnexpectedToken(t))
+                t=>{
+                    let e=self.parse_expr()?;
+                    pos.add_span(e.position().span);
+                    self.parse_special_token(Token::Colon)?;
+                    let rhs=self.parse_expr()?;
+                    pos.add_span(rhs.position().span+1);
+                    v.push((e.clone(),rhs.clone()));
+                }
+            }
+        }
+        return Ok(Expr::Map(v,pos))
+    }
     pub fn parse_expr(&mut self)->PipelineResult<Expr>{
         let (peek,pos)=self.token_stream.peek();
         if peek==Token::SquareBracketLeft{
             return self.parse_array()
+        }
+        if peek==Token::ParenthesisLeft{
+            return self.parse_map()
         }
         let lhs=self.parse_math_expr()?;
         let next=self.token_stream.peek();
