@@ -1,6 +1,6 @@
 use std::any::Any;
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, RwLock, Weak};
 use std::thread::JoinHandle;
 use crate::error::PipelineResult;
 
@@ -8,7 +8,7 @@ use crate::error::PipelineResult;
 use crate::logger::PipelineLogger;
 use crate::module::Module;
 use crate::v1::position::Position;
-use crate::v1::types::Dynamic;
+use crate::v1::types::{Dynamic, Value};
 
 
 pub trait Context<T>:Send + Sync{
@@ -82,7 +82,7 @@ pub enum PipelineContextValue{
 #[derive(Debug,Clone)]
 pub struct Scope{
     parent:Option<Arc<RwLock<Scope>>>,
-    data:HashMap<String,Dynamic>
+    data:HashMap<String,Value>
 }
 
 impl Scope {
@@ -90,7 +90,7 @@ impl Scope {
         Self{data:HashMap::new(),parent:None}
     }
     pub fn set_parent(&mut self,p:Arc<RwLock<Scope>>){self.parent=Some(p)}
-    pub fn get(&self, key:&str) ->Option<Dynamic>{
+    pub fn get(&self, key:&str) ->Option<Value>{
         let r=self.data.get(key);
         match r {
             None => {
@@ -104,7 +104,7 @@ impl Scope {
             Some(s) => {Some(s.clone())}
         }
     }
-    pub fn set(&mut self,key:&str,value:Dynamic){
+    pub fn set(&mut self,key:&str,value:Value){
         self.data.insert(key.into(),value);
     }
 }

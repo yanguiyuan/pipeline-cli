@@ -101,7 +101,7 @@ impl Expr {
             Expr::StringConstant(std, _) => Dynamic::String(std.clone()),
             Expr::IntConstant(i, _) => Dynamic::Integer(i.clone()),
             Expr::FloatConstant(f, _) => Dynamic::Float(f.clone()),
-            Expr::Variable(s, _) => Dynamic::Variable(s.clone()),
+            // Expr::Variable(s, _) => Dynamic::Variable(s.clone()),
             Expr::FnClosure(f,_)=>{
                 let mut ptr=crate::v1::types::FnPtr::new(f.def.name.as_str());
                 ptr.set_fn_def(&f.def);

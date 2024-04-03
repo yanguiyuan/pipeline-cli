@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, RwLock, Weak};
 use crate::context::{Context, EmptyContext};
 use crate::context::PipelineContextValue;
 use crate::engine::{PipelineEngine};
@@ -7,7 +7,7 @@ use crate::error::{PipelineError, PipelineResult};
 use crate::module::{ Module};
 use crate::v1::expr::{Expr, FnCallExpr, Op};
 use crate::v1::stmt::Stmt;
-use crate::v1::types::{Dynamic, Struct};
+use crate::v1::types::{Dynamic, Struct, Value};
 
 #[derive(Clone,Debug)]
 pub struct Interpreter{
@@ -43,12 +43,12 @@ impl Interpreter{
         let m=self.modules.get_mut(name.into().as_str());
         return m
     }
-    pub  fn eval_stmt(&mut self,stmt:Stmt)->PipelineResult<Dynamic>{
+    pub  fn eval_stmt(&mut self,stmt:Stmt)->PipelineResult<Value>{
         let ctx=PipelineEngine::background();
         return self.eval_stmt_with_context(ctx,stmt)
     }
 
-    pub fn eval_stmt_with_context(&mut self, ctx:Arc<RwLock<dyn Context<PipelineContextValue>>>, stmt:Stmt) ->PipelineResult<Dynamic>{
+    pub fn eval_stmt_with_context(&mut self, ctx:Arc<RwLock<dyn Context<PipelineContextValue>>>, stmt:Stmt) ->PipelineResult<Value>{
         match stmt {
             Stmt::FnCall(fc, pos) => {
                 let ctx=PipelineEngine::with_value(ctx,"$pos",pos.into());
@@ -66,45 +66,46 @@ impl Interpreter{
             Stmt::If(b,_)=>{
                 for if_branch in b.get_branches(){
                     let d=self.eval_expr(ctx.clone(),if_branch.get_condition().clone())?;
-                    let d=d.as_bool();
+                    let d=d.as_dynamic().as_bool();
                     match d {
                         None => {
                             return Err(PipelineError::ExpectedType("bool".into()))
                         }
                         Some(d) => {
-                            let mut l=Dynamic::Unit;
+                            let mut l=None;
                             if d {
                                 for i in if_branch.get_body() {
-                                    l=self.eval_stmt_with_context(ctx.clone(), i.clone())?;
+                                    let t=self.eval_stmt_with_context(ctx.clone(), i.clone())?;
+                                    l=Some(t)
                                 }
-                                return Ok(l)
+                                return Ok(l.unwrap())
                             }
                         }
                     }
                 }
                if let Some(else_body)=b.get_else_body(){
-                   let mut l=Dynamic::Unit;
+                   let mut l=None;
                    for i in else_body {
-                       l=self.eval_stmt_with_context(ctx.clone(), i.clone())?;
+                       l=Some(self.eval_stmt_with_context(ctx.clone(), i.clone())?);
                    }
-                   return Ok(l)
+                   return Ok(l.unwrap())
                }
 
             }
             Stmt::ArrayAssign(s,i,v,_)=>{
                 let scope=PipelineEngine::context_with_scope(&ctx);
-                let a=PipelineEngine::context_with_dynamic(&ctx,s.clone()).unwrap();
-                let mut a=a.as_array().unwrap();
+                let  a=PipelineEngine::context_with_dynamic(&ctx,s.clone()).unwrap();
+                let mut a=a.get_mut_arc();
+                let mut a=a.write().unwrap();
+                let mut a=a.as_mut_array().unwrap();
                 let i=self.eval_expr(ctx.clone(),*i)?;
-                let i=i.as_integer().unwrap();
+                let i=i.as_dynamic().as_integer().unwrap();
                 let v=self.eval_expr(ctx,*v)?;
-                a[i as usize]=v;
-                scope.write().unwrap().set(s.as_str(),Dynamic::Array(a));
-
+                a[i as usize]=v.as_weak().into()
             }
             Stmt::While(b,blocks,_)=>{
                 let d=self.eval_expr(ctx.clone(),*b.clone())?;
-                let d=d.as_bool();
+                let d=d.as_dynamic().as_bool();
                 return match d {
                     None => {
                         Err(PipelineError::ExpectedType("bool".into()))
@@ -116,24 +117,27 @@ impl Interpreter{
                                 self.eval_stmt_with_context(ctx.clone(), i.clone())?;
                             }
                              let d0=self.eval_expr(ctx.clone(),*b.clone())?;
-                            condition=d0.as_bool().unwrap();
+                            condition=d0.as_dynamic().as_bool().unwrap();
                         }
-                        Ok(Dynamic::Unit)
+                        Ok(().into())
                     }
                 }
             }
             Stmt::Noop => {}
         }
-        Ok(Dynamic::Unit)
+        Ok(().into())
     }
     pub  fn eval_let_stmt(&mut self, ctx:Arc<RwLock<dyn Context<PipelineContextValue>>>, l:Box<(String,Expr)>)->PipelineResult<()>{
         let scope=PipelineEngine::context_with_scope(&ctx);
         let d=self.eval_expr(ctx,l.1)?;
+        if !d.is_mutable(){
+            panic!("必须是mutable")
+        }
         scope.write().unwrap().set(l.0.as_str(),d);
         Ok(())
     }
 
-    pub  fn eval_expr(&mut self,ctx:Arc<RwLock<dyn Context<PipelineContextValue>>>,expr:Expr)->PipelineResult<Dynamic>{
+    pub  fn eval_expr(&mut self,ctx:Arc<RwLock<dyn Context<PipelineContextValue>>>,expr:Expr)->PipelineResult<Value>{
         match expr.clone() {
             Expr::FnCall(_, _)=>{
                 let mut ptr=expr.dynamic().as_fn_ptr().unwrap();
@@ -147,7 +151,7 @@ impl Interpreter{
                     None => {
                         Err(PipelineError::VariableUndefined(i))
                     }
-                    Some(d) => {Ok(d.clone())}
+                    Some(d) => {Ok(d)}
                 }
 
             }
@@ -155,18 +159,18 @@ impl Interpreter{
                 let mut dv=vec![];
                 for e in v{
                     let d=self.eval_expr(ctx.clone(), e)?;
-                    dv.push(d)
+                    dv.push(d.as_weak().into())
                 }
-                Ok(Dynamic::Array(dv))
+                Ok(Value::Mutable(Arc::new(RwLock::new(Dynamic::Array(dv)))))
             }
             Expr::Map(v,_)=>{
                 let mut dv=HashMap::new();
                 for e in v{
                     let key=self.eval_expr(ctx.clone(), e.0)?;
                     let value=self.eval_expr(ctx.clone(), e.1)?;
-                    dv.insert(key,value);
+                    dv.insert(key.as_dynamic().clone(),value);
                 }
-                Ok(Dynamic::Map(dv))
+                Ok(Value::Mutable(Arc::new(RwLock::new(Dynamic::Map(dv)))))
             }
             Expr::Index(s,e,_)=>{
                 let d=PipelineEngine::context_with_dynamic(&ctx,s.clone());
@@ -175,20 +179,22 @@ impl Interpreter{
                         Err(PipelineError::VariableUndefined(s))
                     }
                     Some(d) => {
-                        match d {
+                        match d.as_dynamic() {
                             Dynamic::Array(a) => {
                                 let index=self.eval_expr(ctx,*e)?;
-                                let index=index.as_integer().unwrap();
+                                let index=index.as_dynamic().as_integer().unwrap();
                                 Ok(a[index as usize].clone())
                             }
                             Dynamic::Map(m) => {
                                 let index=self.eval_expr(ctx,*e)?;
+                                let index=index.as_dynamic();
                                 Ok(m[&index].clone())
                             }
                             Dynamic::String(s)=>{
                                 let index=self.eval_expr(ctx,*e)?;
-                                let index=index.as_integer().unwrap();
-                                Ok(String::from(s.chars().nth(index as usize).unwrap()).into())
+                                let index=index.as_dynamic().as_integer().unwrap();
+                                let r=String::from(s.chars().nth(index as usize).unwrap());
+                                Ok(r.into())
                             }
                             t=>{
                                 return Err(PipelineError::UndefinedOperation(format!("index [] to {}",t.type_name())))
@@ -202,48 +208,66 @@ impl Interpreter{
                 match op {
                     Op::Plus => {
                         let l_r=self.eval_expr(ctx.clone(),*l)?;
+                        let l_r=l_r.as_dynamic();
                         let r_r=self.eval_expr(ctx.clone(),*r)?;
-                        return Ok(l_r+r_r)
+                        let r_r=r_r.as_dynamic();
+                        return Ok((l_r+r_r).into())
                     }
                     Op::Minus => {
                         let l_r=self.eval_expr(ctx.clone(),*l)?;
+                        let l_r=l_r.as_dynamic();
                         let r_r=self.eval_expr(ctx.clone(),*r)?;
-                        return Ok(l_r-r_r)
+                        let r_r=r_r.as_dynamic();
+                        return Ok((l_r-r_r).into())
                     }
                     Op::Mul=>{
                         let l_r=self.eval_expr(ctx.clone(),*l)?;
+                        let l_r=l_r.as_dynamic();
                         let r_r=self.eval_expr(ctx.clone(),*r)?;
-                        return Ok(l_r*r_r)
+                        let r_r=r_r.as_dynamic();
+                        return Ok((l_r*r_r).into())
                     }
                     Op::Greater=>{
                         let l_r=self.eval_expr(ctx.clone(),*l)?;
+                        let l_r=l_r.as_dynamic();
                         let r_r=self.eval_expr(ctx.clone(),*r)?;
+                        let r_r=r_r.as_dynamic();
                         return Ok((l_r>r_r).into())
                     }
                     Op::Less=>{
                         let l_r=self.eval_expr(ctx.clone(),*l)?;
+                        let l_r=l_r.as_dynamic();
                         let r_r=self.eval_expr(ctx.clone(),*r)?;
+                        let r_r=r_r.as_dynamic();
                         return Ok((l_r<r_r).into())
                     }
                     Op::Equal=>{
                         let l_r=self.eval_expr(ctx.clone(),*l)?;
+                        let l_r=l_r.as_dynamic();
                         let r_r=self.eval_expr(ctx.clone(),*r)?;
+                        let r_r=r_r.as_dynamic();
                         return Ok((l_r==r_r).into())
                     }
                     Op::NotEqual=>{
                         let l_r=self.eval_expr(ctx.clone(),*l)?;
+                        let l_r=l_r.as_dynamic();
                         let r_r=self.eval_expr(ctx.clone(),*r)?;
+                        let r_r=r_r.as_dynamic();
                         return Ok((l_r!=r_r).into())
                     }
                     Op::Div=>{
                         let l_r=self.eval_expr(ctx.clone(),*l)?;
+                        let l_r=l_r.as_dynamic();
                         let r_r=self.eval_expr(ctx.clone(),*r)?;
-                        return Ok(l_r/r_r)
+                        let r_r=r_r.as_dynamic();
+                        return Ok((l_r/r_r).into())
                     }
                     Op::Mod=>{
                         let l_r=self.eval_expr(ctx.clone(),*l)?;
+                        let l_r=l_r.as_dynamic();
                         let r_r=self.eval_expr(ctx.clone(),*r)?;
-                        return Ok(l_r%r_r)
+                        let r_r=r_r.as_dynamic();
+                        return Ok((l_r%r_r).into())
                     }
                 }
             }
@@ -251,29 +275,44 @@ impl Interpreter{
                 let mut props=HashMap::new();
                 for (k,i) in e.get_props(){
                     let v=self.eval_expr(ctx.clone(),i.clone())?;
-                    props.insert(k.into(),v);
+                    if v.is_mutable(){
+                        panic!("不能持有其所有权")
+                    }
+                    props.insert(k.clone(),v);
                 }
-                Ok(Dynamic::Struct(Box::new(Struct::new(e.get_name().into(),props))))
+                Ok(
+                    Value::Mutable(
+                        Arc::new(
+                            RwLock::new(
+                                Dynamic::Struct(
+                                    Box::new(
+                                        Struct::new(e.get_name().into(),props)
+                                    )
+                                )
+                            )
+                        )
+                    )
+                )
             }
             Expr::MemberAccess(father,prop,_)=>{
                 let obj=self.eval_expr(ctx,*father)?;
-                let obj=obj.as_struct().unwrap();
+                let obj=obj.as_dynamic().as_struct().unwrap();
                 let r=obj.get_prop(&prop).unwrap();
                 return Ok(r)
             }
-            _=>Ok(expr.dynamic())
+            _=>Ok(expr.dynamic().into())
         }
     }
-    pub fn eval_fn_call_expr(&mut self,f:FnCallExpr)->PipelineResult<Dynamic>{
+    pub fn eval_fn_call_expr(&mut self,f:FnCallExpr)->PipelineResult<Value>{
         let c=Arc::new(RwLock::new(EmptyContext::new()));
        self.eval_fn_call_expr_with_context(c,f)
     }
-    pub  fn eval_fn_call_expr_with_context(&mut self, ctx: Arc<RwLock<dyn Context<PipelineContextValue>>>, f:FnCallExpr) ->PipelineResult<Dynamic>{
+    pub  fn eval_fn_call_expr_with_context(&mut self, ctx: Arc<RwLock<dyn Context<PipelineContextValue>>>, f:FnCallExpr) ->PipelineResult<Value>{
         let mut v=vec![];
         for e in &f.args{
             let d=self.eval_expr(ctx.clone(),e.clone())?;
-            if d.is_fn_ptr(){
-                let mut ptr=d.as_fn_ptr().unwrap();
+            if d.as_dynamic().is_fn_ptr(){
+                let mut ptr=d.as_dynamic().as_fn_ptr().unwrap();
                 if ptr.is_defer(){
                     v.push(d);
                     continue
@@ -283,8 +322,8 @@ impl Interpreter{
                 let d=ptr.call(&mut e,ctx.clone()).unwrap();
                 v.push(d);
                 continue
-            }else if d.is_variable(){
-                let d=d.as_variable().unwrap();
+            }else if d.as_dynamic().is_variable(){
+                let d=d.as_dynamic().as_variable().unwrap();
                 let r=PipelineEngine::context_with_dynamic(&ctx,d.as_str()).unwrap();
                 v.push(r);
                 continue

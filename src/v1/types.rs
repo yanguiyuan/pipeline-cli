@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::hash::{Hash, Hasher};
 use std::ops::{Add, Div, Mul, Rem, Sub};
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, RwLock, RwLockWriteGuard, Weak};
 use crate::context::{Context, PipelineContextValue};
 use crate::engine::{PipelineEngine};
 use crate::error::PipelineResult;
@@ -19,24 +19,168 @@ pub enum Dynamic{
     Boolean(bool),
     Variable(String),
     FnPtr(Box<FnPtr>),
-    Array(Vec<Dynamic>),
-    Map(HashMap<Dynamic,Dynamic>),
+    Array(Vec<Value>),
+    Map(HashMap<Dynamic,Value>),
     Struct(Box<Struct>),
     Native(Arc<RwLock<dyn Any+Send+Sync>>)
 }
 #[derive(Debug,Clone)]
 pub struct Struct{
     name:String,
-    props:HashMap<String,Dynamic>
+    props:HashMap<String,Value>
+}
+#[derive(Debug,Clone)]
+pub enum Value{
+    Immutable(Dynamic),
+    Mutable(Arc<RwLock<Dynamic>>),
+    Refer(Weak<RwLock<Dynamic>>)
 }
 
+impl Value {
+    pub fn with_mutable(v:Dynamic)->Self{
+        Value::Mutable(Arc::new(RwLock::new(v)))
+    }
+    pub fn with_immutable(v:Dynamic)->Self{
+        Value::Immutable(v)
+    }
+    pub fn as_string(&self)->Option<String>{
+        self.as_dynamic().as_string()
+    }
+    pub fn as_float(&self)->Option<f64>{
+        self.as_dynamic().as_float()
+    }
+    pub fn as_bool(&self)->Option<bool>{
+        self.as_dynamic().as_bool()
+    }
+    pub fn as_integer(&self)->Option<i64>{
+        self.as_dynamic().as_integer()
+    }
+    pub fn is_immutable(&self)->bool{
+        match self {
+            Value::Immutable(_) => {true}
+            _=>{false}
+        }
+    }
+    pub fn is_mutable(&self)->bool{
+        match self {
+            Value::Mutable(_) => {true}
+            _=>false
+        }
+    }
+    pub fn as_dynamic(&self)->Dynamic{
+        match self {
+            Value::Immutable(d) => {d.clone()}
+            Value::Mutable(d) => {
+                let r=d.read().unwrap();
+                return r.clone()
+            }
+            Value::Refer(r)=>{
+                r.upgrade().unwrap().read().unwrap().clone()
+            }
+        }
+    }
+    pub fn get_mut_arc(&self)->Arc<RwLock<Dynamic>>{
+        match self {
+            Value::Immutable(d) => {panic!("can not be mutable")}
+            Value::Mutable( d) => {
+                d.clone()
+            }
+            Value::Refer(r)=>{
+               r.upgrade().unwrap()
+            }
+        }
+    }
+    pub fn as_arc(&self)->Arc<RwLock<Dynamic>>{
+        match self {
+            Value::Immutable(d) => {Arc::new(RwLock::new(d.clone()))}
+            Value::Mutable( d) => {
+               d.clone()
+            }
+            Value::Refer(r)=>{
+                r.upgrade().unwrap()
+            }
+        }
+    }
+    pub fn as_weak(&self)->Weak<RwLock<Dynamic>>{
+        match self {
+            Value::Immutable(d) => {panic!("can not be weak pointer")}
+            Value::Mutable( d) => {
+                Arc::downgrade(d)
+            }
+            Value::Refer(r)=>r.clone()
+        }
+    }
+}
+
+impl From<Weak<RwLock<Dynamic>>> for Value {
+    fn from(value: Weak<RwLock<Dynamic>>) -> Self {
+        Value::Refer(value)
+    }
+}
+
+impl From<Dynamic> for Value {
+    fn from(value: Dynamic) -> Self {
+        Value::Immutable(value)
+    }
+}
+
+impl From<()> for Value {
+    fn from(value: ()) -> Self {
+        Value::Immutable(Dynamic::Unit)
+    }
+}
+
+impl From<i64> for Value {
+    fn from(value: i64) -> Self {
+        Value::Immutable(Dynamic::Integer(value))
+    }
+}
+impl From<f64> for Value {
+    fn from(value: f64) -> Self {
+        Value::Immutable(Dynamic::Float(value))
+    }
+}
+impl From<String> for Value {
+    fn from(value: String) -> Self {
+        Value::Immutable(Dynamic::String(value))
+    }
+}
+impl From<bool> for Value {
+    fn from(value: bool) -> Self {
+        Value::Immutable(Dynamic::Boolean(value))
+    }
+}
+
+impl From<Value> for String {
+    fn from(value: Value) -> Self {
+        value.as_string().unwrap()
+    }
+}
+
+impl From<Value> for i64 {
+    fn from(value: Value) -> Self {
+        value.as_integer().unwrap()
+    }
+}
+
+impl From<Value> for f64 {
+    fn from(value: Value) -> Self {
+        value.as_float().unwrap()
+    }
+}
+
+impl From<Value> for bool {
+    fn from(value: Value) -> Self {
+        value.as_bool().unwrap()
+    }
+}
 impl Struct {
-    pub fn new(name:String,props:HashMap<String,Dynamic>)->Self{
+    pub fn new(name:String,props:HashMap<String,Value>)->Self{
         Self{
             name,props
         }
     }
-    pub fn get_prop(&self,name:&str)->Option<Dynamic>{
+    pub fn get_prop(&self,name:&str)->Option<Value>{
         self.props.get(name).map(|e|e.clone())
     }
 }
@@ -69,7 +213,7 @@ impl FnPtr {
     pub fn set_fn_def(&mut self,fn_def:&FnDef){
         self.fn_def=Some(fn_def.clone())
     }
-    pub  fn call(&mut self, engine:&mut PipelineEngine, ctx:Arc<RwLock<dyn Context<PipelineContextValue>>>)->PipelineResult<Dynamic>{
+    pub  fn call(&mut self, engine:&mut PipelineEngine, ctx:Arc<RwLock<dyn Context<PipelineContextValue>>>)->PipelineResult<Value>{
         let fn_def= self.fn_def.clone();
         match fn_def {
             None => {
@@ -139,7 +283,7 @@ impl Display for Dynamic {
             Dynamic::Array(v)=>{
                 write!(f, "[").expect("write失败");
                 for (i,a) in v.iter().enumerate(){
-                    write!(f, "{a}").expect("write失败");
+                    write!(f, "{}",a.as_dynamic()).expect("write失败");
                     if i<v.len()-1{
                         write!(f, ",").expect("write失败");
                     }
@@ -150,7 +294,7 @@ impl Display for Dynamic {
             Dynamic::Map(v)=>{
                 write!(f, "{{").expect("write失败");
                 for (i,a) in v.iter().enumerate(){
-                    write!(f, "{}:{}",a.0,a.1).expect("write失败");
+                    write!(f, "{}:{}",a.0,a.1.as_dynamic()).expect("write失败");
                     if i<v.len()-1{
                         write!(f, ",").expect("write失败");
                     }
@@ -161,7 +305,7 @@ impl Display for Dynamic {
             Dynamic::Struct(s)=>{
                 write!(f, "{}{{",s.name).expect("write失败");
                 for (i,a) in s.props.iter().enumerate(){
-                    write!(f, "{}:{}",a.0,a.1).expect("write失败");
+                    write!(f, "{}:{}",a.0,a.1.as_dynamic()).expect("write失败");
                     if i<s.props.len()-1{
                         write!(f, ",").expect("write失败");
                     }
@@ -451,9 +595,9 @@ impl Dynamic{
             _=>None
         }
     }
-    pub fn as_array(&self)->Option<Vec<Dynamic>>{
+    pub fn as_mut_array(&mut self)->Option<&mut Vec<Value>>{
         match self {
-            Dynamic::Array(i)=>Some(i.clone()),
+            Dynamic::Array( i)=>Some(i),
             _=>None
         }
     }

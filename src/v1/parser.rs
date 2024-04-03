@@ -310,6 +310,7 @@ impl PipelineParser{
                 let (peek, pos) = self.token_stream.peek();
                 match peek {
                     Token::BraceLeft => {
+
                         let (fn_call_expr, pos) = self.parse_fn_call_expr(&s, pos0)?;
                         Ok(Stmt::FnCall(Box::new(fn_call_expr), pos))
                     }

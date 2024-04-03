@@ -2,6 +2,7 @@ use std::any::Any;
 use std::collections::HashMap;
 use std::io;
 use std::io::Read;
+use std::rc::Weak;
 use std::sync::{Arc,RwLock};
 use std::thread::JoinHandle;
 use scanner_rust::Scanner;
@@ -17,7 +18,7 @@ use crate::v1::lexer::Lexer;
 use crate::v1::parser::{FnDef, PipelineParser};
 use crate::v1::position::Position;
 use crate::v1::stmt::Stmt;
-use crate::v1::types::Dynamic;
+use crate::v1::types::{Dynamic, Value};
 
 pub struct PipelineEngine{
     source:String,
@@ -72,7 +73,7 @@ impl PipelineEngine{
         default.interpreter.register_module("pipe",pipe);
         return default
     }
-    pub fn context_with_dynamic(ctx:&Arc<RwLock<dyn Context<PipelineContextValue>>>,key:impl AsRef<str>)->Option<Dynamic>{
+    pub fn context_with_dynamic(ctx:&Arc<RwLock<dyn Context<PipelineContextValue>>>,key:impl AsRef<str>)->Option<Value>{
         let scope=  ctx.read().unwrap().value("$scope").unwrap();
         let scope=scope.as_scope().unwrap();
         let d=scope.read().unwrap();
@@ -143,8 +144,8 @@ impl PipelineEngine{
         let ctx=Arc::new(RwLock::new(ValueContext::with_value(ctx,"logger",PipelineContextValue::Logger(Arc::new(RwLock::new(PipelineLogger::new()))))));
         //全局作用域
         let mut scope=Scope::new();
-        scope.set("true",Dynamic::Boolean(true));
-        scope.set("false",Dynamic::Boolean(false));
+        scope.set("true",true.into());
+        scope.set("false",false.into());
         let ctx=PipelineEngine::with_value(ctx,"$scope",PipelineContextValue::Scope(Arc::new(RwLock::new(scope))));
         let ctx=PipelineEngine::with_value(ctx,"$sc",PipelineContextValue::Native(Arc::new(RwLock::new(Scanner::new(io::stdin())))));
         // let ctx=PipelineEngine::with_value(ctx,"$env",PipelineContextValue::Env(Arc::new(RwLock::new(HashMap::new()))));
@@ -201,7 +202,7 @@ impl PipelineEngine{
         Ok(())
     }
     #[allow(unused)]
-    pub  fn eval_stmt_from_ast_with_context(&mut self,ctx:Arc<RwLock<dyn Context<PipelineContextValue>>>,stmt:Stmt)->PipelineResult<Dynamic>{
+    pub  fn eval_stmt_from_ast_with_context(&mut self,ctx:Arc<RwLock<dyn Context<PipelineContextValue>>>,stmt:Stmt)->PipelineResult<Value>{
         let a=self.interpreter.eval_stmt_with_context(ctx,stmt);
         return a
 
@@ -215,13 +216,13 @@ impl PipelineEngine{
         Ok(())
     }
     #[allow(unused)]
-    pub  fn eval_expr_from_ast(&mut self,expr:Expr)->PipelineResult<Dynamic>{
+    pub  fn eval_expr_from_ast(&mut self,expr:Expr)->PipelineResult<Value>{
         let ctx=PipelineEngine::background();
         let a=self.interpreter.eval_expr(ctx,expr).unwrap();;
         return Ok(a)
     }
     #[allow(unused)]
-    pub  fn eval_expr(&mut self,script:impl AsRef<str>)->PipelineResult<Dynamic>{
+    pub  fn eval_expr(&mut self,script:impl AsRef<str>)->PipelineResult<Value>{
         let lexer=Lexer::from_script(script);
         self.parser.set_lexer(lexer);
         let ast=self.parser.parse_expr().expect("解析错误");
@@ -230,34 +231,34 @@ impl PipelineEngine{
         return r
     }
     #[allow(unused)]
-    pub  fn eval_stmt(&mut self,script:impl AsRef<str>)->PipelineResult<Dynamic>{
+    pub  fn eval_stmt(&mut self,script:impl AsRef<str>)->PipelineResult<Value>{
         let lexer=Lexer::from_script(script);
         self.parser.set_lexer(lexer);
         let ast=self.parser.parse_stmt().expect("解析错误");
         let r=self.eval_stmt_from_ast(ast);
-        return Ok(Dynamic::Unit)
+        return Ok(().into())
     }
     #[allow(unused)]
-    pub  fn eval_stmt_blocks(&mut self,script:impl AsRef<str>)->PipelineResult<Dynamic>{
+    pub  fn eval_stmt_blocks(&mut self,script:impl AsRef<str>)->PipelineResult<Value>{
         let lexer=Lexer::from_script(script);
         self.parser.set_lexer(lexer);
         let ast=self.parser.parse_stmt_blocks().expect("解析错误");
         let r=self.eval_stmt_blocks_from_ast(ast);
-        return Ok(Dynamic::Unit)
+        return Ok(().into())
     }
     #[allow(unused)]
-    pub  fn eval_stmt_blocks_from_ast_with_context(&mut self,ctx:Arc<RwLock<dyn Context<PipelineContextValue>>>,stmts:Vec<Stmt>)->PipelineResult<Dynamic>{
+    pub  fn eval_stmt_blocks_from_ast_with_context(&mut self,ctx:Arc<RwLock<dyn Context<PipelineContextValue>>>,stmts:Vec<Stmt>)->PipelineResult<Value>{
         for stmt in stmts{
             let r=self.eval_stmt_from_ast_with_context(ctx.clone(),stmt)?;
-            if let Dynamic::Unit=r{
+            if let Value::Immutable(Dynamic::Unit)=r{
                 continue
             }
             return Ok(r);
         }
-        Ok(Dynamic::Unit)
+        Ok(().into())
     }
     #[allow(unused)]
-    pub fn eval_fn_call_expr_from_ast(&mut self,ctx:Arc<RwLock<dyn Context<PipelineContextValue>>>,expr:FnCallExpr)->PipelineResult<Dynamic>{
+    pub fn eval_fn_call_expr_from_ast(&mut self,ctx:Arc<RwLock<dyn Context<PipelineContextValue>>>,expr:FnCallExpr)->PipelineResult<Value>{
         let r=self.interpreter.eval_fn_call_expr_with_context(ctx,expr);
         return r
     }

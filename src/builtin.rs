@@ -12,10 +12,10 @@ use regex::Regex;
 use crate::context::{ Context, PipelineContextValue};
 use crate::engine::{PipelineEngine};
 use crate::error::PipelineResult;
-use crate::v1::types::Dynamic;
+use crate::v1::types::{Dynamic, Value};
 
 
-pub fn cmd(command:&str, ctx:Arc<RwLock<dyn Context<PipelineContextValue>>>)->PipelineResult<Dynamic>{
+pub fn cmd(command:&str, ctx:Arc<RwLock<dyn Context<PipelineContextValue>>>)->PipelineResult<Value>{
     let mut cmd="powershell";
     let mut c="/C";
     let os = std::env::consts::OS;
@@ -118,7 +118,7 @@ pub fn cmd(command:&str, ctx:Arc<RwLock<dyn Context<PipelineContextValue>>>)->Pi
     join_set.push(handle);
 
     let _ = child.wait().expect("Failed to wait for command execution");
-    return Ok(Dynamic::Unit)
+    return Ok(().into())
 }
 fn is_system_gbk_output_command(c: &str) ->bool{
     if c.starts_with("ls"){return true}
