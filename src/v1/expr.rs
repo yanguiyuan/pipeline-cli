@@ -68,6 +68,18 @@ impl Expr {
             _=>false
         }
     }
+    pub fn try_get_variable_name(&self)->Option<String>{
+        match self {
+            Expr::Variable(s,_)=>Some(s.clone()),
+            _=>None
+        }
+    }
+    pub fn try_get_member_access(&self)->Option<(Box<Expr>,String)>{
+        match self {
+            Expr::MemberAccess(b,name,_)=>Some((b.clone(),name.clone())),
+            _=>None
+        }
+    }
     pub fn position(&self)->Position{
         match self  {
             Expr::StringConstant(_, pos) => {pos.clone()}
@@ -85,17 +97,18 @@ impl Expr {
             Expr::MemberAccess(_,_,pos)=>pos.clone()
         }
     }
-    pub fn any(&self)-> Box<dyn Any> {
-        match self  {
-            Expr::StringConstant(s, _) => {
-                Box::new(s.clone())
-            }
-            Expr::IntConstant(i, _) => Box::new(i.clone()),
-            Expr::FloatConstant(f, _) => Box::new(f.clone()),
-            Expr::Variable(v,_)=>Box::new(Variable{name:v.clone()}),
-            _=>Box::new(()),
-        }
-    }
+
+    // pub fn any(&self)-> Box<dyn Any> {
+    //     match self  {
+    //         Expr::StringConstant(s, _) => {
+    //             Box::new(s.clone())
+    //         }
+    //         Expr::IntConstant(i, _) => Box::new(i.clone()),
+    //         Expr::FloatConstant(f, _) => Box::new(f.clone()),
+    //         Expr::Variable(v,_)=>Box::new(Variable{name:v.clone()}),
+    //         _=>Box::new(()),
+    //     }
+    // }
     pub fn dynamic(&self)->Dynamic{
         match self {
             Expr::StringConstant(std, _) => Dynamic::String(std.clone()),

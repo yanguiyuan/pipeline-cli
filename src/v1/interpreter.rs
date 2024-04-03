@@ -60,6 +60,16 @@ impl Interpreter{
             Stmt::Let(l,_)=>{
                 self.eval_let_stmt(ctx,l)?;
             }
+            Stmt::Assign(e,_)=>{
+                let target=self.eval_expr(ctx.clone(),e.0)?;
+                let value=self.eval_expr(ctx,e.1)?;
+                if !target.can_mutable(){
+                    panic!("it must be mutable")
+                }
+                let target=target.get_mut_arc();
+                let mut target=target.write().unwrap();
+                *target=value.as_dynamic();
+            }
             Stmt::Return(e,_)=>{
                 return self.eval_expr(ctx, *e)
             }
@@ -127,14 +137,17 @@ impl Interpreter{
         }
         Ok(().into())
     }
-    pub  fn eval_let_stmt(&mut self, ctx:Arc<RwLock<dyn Context<PipelineContextValue>>>, l:Box<(String,Expr)>)->PipelineResult<()>{
-        let scope=PipelineEngine::context_with_scope(&ctx);
-        let d=self.eval_expr(ctx,l.1)?;
+    pub  fn eval_let_stmt(&mut self, ctx:Arc<RwLock<dyn Context<PipelineContextValue>>>, l:Box<(String,Expr)>)->PipelineResult<Value>{
+        // let d=self.eval_expr(ctx.clone(),l.0)?;
+
+        let d=self.eval_expr(ctx.clone(),l.1)?;
         if !d.is_mutable(){
             panic!("必须是mutable")
         }
-        scope.write().unwrap().set(l.0.as_str(),d);
-        Ok(())
+        let scope=PipelineEngine::context_with_scope(&ctx);
+        let mut scope=scope.write().unwrap();
+        scope.set(l.0.as_str(),d);
+        Ok(().into())
     }
 
     pub  fn eval_expr(&mut self,ctx:Arc<RwLock<dyn Context<PipelineContextValue>>>,expr:Expr)->PipelineResult<Value>{
@@ -274,9 +287,16 @@ impl Interpreter{
             Expr::Struct(e,_)=>{
                 let mut props=HashMap::new();
                 for (k,i) in e.get_props(){
-                    let v=self.eval_expr(ctx.clone(),i.clone())?;
+                    let mut v=self.eval_expr(ctx.clone(),i.clone())?;
                     if v.is_mutable(){
                         panic!("不能持有其所有权")
+                    }
+                    if v.is_immutable(){
+                        let scope=PipelineEngine::context_with_scope(&ctx);
+                        let mut scope=scope.write().unwrap();
+                        let  v0=Value::Mutable(v.as_arc());
+                        v=Value::Refer(v0.as_weak());
+                        scope.set(format!("{}.{}",e.get_name(),k).as_str(),v0)
                     }
                     props.insert(k.clone(),v);
                 }

@@ -2,6 +2,7 @@ use std::{env, fs};
 use std::collections::HashMap;
 use std::fs::File;
 use std::path::{Path, PathBuf};
+use std::process::id;
 use scanner_rust::generic_array::typenum::Exp;
 use crate::error::{PipelineError, PipelineResult};
 use crate::error::PipelineError::UnknownModule;
@@ -78,6 +79,9 @@ impl PipelineParser{
                         }
                         t=>Err(PipelineError::UnusedKeyword(t.into()))
                     }
+                },
+                Token::EOF=>{
+                    Ok(Stmt::Noop)
                 },
                 Token::ParenthesisRight=>Ok(Stmt::Noop),
                 _=>return self.parse_expr_stmt()
@@ -304,78 +308,114 @@ impl PipelineParser{
     }
 
     pub fn parse_expr_stmt(&mut self)->PipelineResult<Stmt>{
-        let (token,mut pos0)=self.token_stream.next();
-        return match token {
-            Token::Identifier(s) => {
-                let (peek, pos) = self.token_stream.peek();
-                match peek {
-                    Token::BraceLeft => {
-
-                        let (fn_call_expr, pos) = self.parse_fn_call_expr(&s, pos0)?;
-                        Ok(Stmt::FnCall(Box::new(fn_call_expr), pos))
-                    }
-                    Token::Assign => {
-                        let (_, mut pos) = self.token_stream.next();
-                        let expr = self.parse_expr()?;
-                        pos.add_span(expr.position().span);
-                        return Ok(Stmt::Let(Box::new((s, expr)), pos))
-                    }
-                    Token::SquareBracketLeft=>{
-                        self.token_stream.next();
-                        let expr=self.parse_math_expr()?;
-                        self.parse_special_token(Token::SquareBracketRight)?;
-                        self.parse_special_token(Token::Assign)?;
-                        let value=self.parse_expr()?;
-                        pos0.add_span(1+1+expr.position().span+value.position().span);
-                        return Ok(Stmt::ArrayAssign(s,Box::new(expr),Box::new(value),pos0))
-
-                    }
-                    Token::ScopeSymbol=>{
-                        self.token_stream.next();
-                        let (next,pos1)=self.token_stream.next();
-                        let fc_name=next.get_identifier_value();
-                        let (args,pos2)=self.parse_fn_call_args().unwrap();
-                        let fn_expr=FnCallExpr{name:s+"::"+fc_name,args};
-                        pos0.add_span(pos1.span+pos2.span+2);
-                        return Ok(Stmt::FnCall(Box::new(fn_expr),pos));
-                    }
-                    Token::Dot=>{
-                        self.token_stream.next();
-                        let (token1,mut pos1)=self.token_stream.next();
-                        let (mut fn_call_expr, pos) = self.parse_fn_call_expr(&token1.get_identifier_value(), pos1)?;
-                        fn_call_expr.args.insert(0,Expr::Variable(s,pos0));
-                        Ok(Stmt::FnCall(Box::new(fn_call_expr), pos))
-                    }
-                    _ => Ok(Stmt::Noop)
-                }
+        let lhs=self.parse_expr_call_chain()?;
+        let (token,mut pos0)=self.token_stream.peek();
+        Ok(match token {
+            Token::Assign=>{
+                self.token_stream.next();
+                let expr = self.parse_expr()?;
+                pos0.add_span(expr.position().span);
+                return Ok(Stmt::Assign(Box::new((lhs, expr)), pos0))
             }
-            _ => Ok(Stmt::Noop)
-        }
-    }
-    pub fn parse_fn_call_expr(&mut self,s:&str,pos:Position) -> PipelineResult<(FnCallExpr,Position)> {
-        let mut pos=pos;
-        let (mut args,args_pos)=self.parse_fn_call_args()?;
-        pos.add_span(args_pos.span);
-        if let (peek,mut pos1)=self.token_stream.peek(){
-            if Token::ParenthesisLeft==peek{
-                self.parse_special_token(Token::ParenthesisLeft).unwrap();
-                let blocks=self.parse_stmt_blocks()?;
-                for stmt in &blocks{
-                    pos1.add_span(stmt.position().span)
+            Token::BraceLeft => {
+                let(mut args,pos)=self.parse_fn_call_args()?;
+                let mut fn_call_expr=FnCallExpr{
+                    name:"".into(),
+                    args:vec![],
+                };
+                match lhs {
+                    Expr::Variable(s,_)=>{
+                        fn_call_expr.name=s;
+                    }
+                    Expr::MemberAccess(b,n,_)=>{
+                        fn_call_expr.name=n;
+                        args.insert(0,*b)
+                    }
+                    _=>panic!("only variable and member_access expected")
                 }
-                let fn_def=FnDef::new("".to_string(),vec![],blocks);
-                pos1.add_span(1);
-                pos.add_span(pos1.span);
-                args.push(Expr::FnClosure(FnClosureExpr { def: fn_def },pos1));
-                self.parse_special_token(Token::ParenthesisRight).unwrap();
-            }
-        }
+                fn_call_expr.args=args;
 
-        Ok((FnCallExpr{
-            name: s.into(),
-            args
-        },pos))
+                Stmt::FnCall(Box::new(fn_call_expr), pos)
+            }
+           _=> {
+               if let Expr::FnCall(fc,pos)=lhs{
+                   return Ok(Stmt::FnCall(Box::new(fc),pos))
+               }
+               return Ok(Stmt::Noop)
+           }
+
+        })
+        // return match token {
+        //     Token::Identifier(s) => {
+        //         let (peek, pos) = self.token_stream.peek();
+        //         match peek {
+        //             Token::BraceLeft => {
+        //
+        //                 let (fn_call_expr, pos) = self.parse_fn_call_expr(&s, pos0)?;
+        //                 Ok(Stmt::FnCall(Box::new(fn_call_expr), pos))
+        //             }
+        //             Token::Assign => {
+        //                 let (_, mut pos) = self.token_stream.next();
+        //                 let expr = self.parse_expr()?;
+        //                 pos.add_span(expr.position().span);
+        //                 return Ok(Stmt::Let(Box::new((s, expr)), pos))
+        //             }
+        //             Token::SquareBracketLeft=>{
+        //                 self.token_stream.next();
+        //                 let expr=self.parse_math_expr()?;
+        //                 self.parse_special_token(Token::SquareBracketRight)?;
+        //                 self.parse_special_token(Token::Assign)?;
+        //                 let value=self.parse_expr()?;
+        //                 pos0.add_span(1+1+expr.position().span+value.position().span);
+        //                 return Ok(Stmt::ArrayAssign(s,Box::new(expr),Box::new(value),pos0))
+        //
+        //             }
+        //             Token::ScopeSymbol=>{
+        //                 self.token_stream.next();
+        //                 let (next,pos1)=self.token_stream.next();
+        //                 let fc_name=next.get_identifier_value();
+        //                 let (args,pos2)=self.parse_fn_call_args().unwrap();
+        //                 let fn_expr=FnCallExpr{name:s+"::"+fc_name,args};
+        //                 pos0.add_span(pos1.span+pos2.span+2);
+        //                 return Ok(Stmt::FnCall(Box::new(fn_expr),pos));
+        //             }
+        //             Token::Dot=>{
+        //                 self.token_stream.next();
+        //                 let (token1,mut pos1)=self.token_stream.next();
+        //                 let (mut fn_call_expr, pos) = self.parse_fn_call_expr(&token1.get_identifier_value(), pos1)?;
+        //                 fn_call_expr.args.insert(0,Expr::Variable(s,pos0));
+        //                 Ok(Stmt::FnCall(Box::new(fn_call_expr), pos))
+        //             }
+        //             _ => Ok(Stmt::Noop)
+        //         }
+        //     }
+        //     _ => Ok(Stmt::Noop)
+        // }
     }
+    // pub fn parse_fn_call_expr(&mut self,s:&str,pos:Position) -> PipelineResult<(FnCallExpr,Position)> {
+    //     let mut pos=pos;
+    //     let (mut args,args_pos)=self.parse_fn_call_args()?;
+    //     pos.add_span(args_pos.span);
+    //     if let (peek,mut pos1)=self.token_stream.peek(){
+    //         if Token::ParenthesisLeft==peek{
+    //             self.parse_special_token(Token::ParenthesisLeft).unwrap();
+    //             let blocks=self.parse_stmt_blocks()?;
+    //             for stmt in &blocks{
+    //                 pos1.add_span(stmt.position().span)
+    //             }
+    //             let fn_def=FnDef::new("".to_string(),vec![],blocks);
+    //             pos1.add_span(1);
+    //             pos.add_span(pos1.span);
+    //             args.push(Expr::FnClosure(FnClosureExpr { def: fn_def },pos1));
+    //             self.parse_special_token(Token::ParenthesisRight).unwrap();
+    //         }
+    //     }
+    //
+    //     Ok((FnCallExpr{
+    //         name: s.into(),
+    //         args
+    //     },pos))
+    // }
     pub fn parse_fn_call_args(&mut self)->PipelineResult<(Vec<Expr>,Position)>{
         self.parse_special_token(Token::BraceLeft)?;
         let mut v =vec![];
@@ -409,6 +449,20 @@ impl PipelineParser{
                 _=>return Err(PipelineError::UnexpectedToken(token))
             }
         }
+        if let (peek,mut pos1)=self.token_stream.peek(){
+            if Token::ParenthesisLeft==peek{
+                self.parse_special_token(Token::ParenthesisLeft).unwrap();
+                let blocks=self.parse_stmt_blocks()?;
+                for stmt in &blocks{
+                    pos1.add_span(stmt.position().span)
+                }
+                let fn_def=FnDef::new("".to_string(),vec![],blocks);
+                pos1.add_span(1);
+                p.add_span(pos1.span);
+                v.push(Expr::FnClosure(FnClosureExpr { def: fn_def },pos1));
+                self.parse_special_token(Token::ParenthesisRight).unwrap();
+            }
+        }
         return Ok((v,p))
     }
     fn parse_primary(&mut self)->PipelineResult<Expr>{
@@ -428,11 +482,14 @@ impl PipelineParser{
                 match peek {
                     Token::ScopeSymbol=>{
                         self.token_stream.next();
-                        let (next,pos1)=self.token_stream.next();
+                        let (next,pos2)=self.token_stream.next();
                         let fc_name=next.get_identifier_value();
-                        let (args,pos2)=self.parse_fn_call_args().unwrap();
-                        let fn_expr=FnCallExpr{name:ident+"::"+fc_name,args};
-                        pos.add_span(pos1.span+pos2.span+2);
+                        let (args,pos3)=self.parse_fn_call_args().unwrap();
+                        let name=ident+"::"+fc_name;
+                        let mut p=pos.clone();
+                        p.add_span(pos2.span+2);
+                        let fn_expr=FnCallExpr{name,args};
+                        pos.add_span(pos2.span+pos3.span+2);
                         return Ok(Expr::FnCall(fn_expr,pos));
                     }
                     Token::SquareBracketLeft=>{
@@ -476,35 +533,64 @@ impl PipelineParser{
             _=>Err(PipelineError::UnexpectedToken(token))
         }
     }
-    fn parse_function_call_chain(&mut self)->PipelineResult<Expr>{
+    fn parse_expr_call_chain(&mut self)->PipelineResult<Expr>{
         let mut lhs=self.parse_primary()?;
         loop{
-            let (peek,pos)=self.token_stream.peek();
-            if let Token::Dot=peek{
-                self.token_stream.next();
-                let (next, pos0)=self.token_stream.next();
-                let name=next.get_identifier_value();
-                let (peek1,pos1)=self.token_stream.peek();
-                if let Token::BraceLeft=peek1{
-                    let (mut fn_call,mut pos)=self.parse_fn_call_expr(name,pos0)?;
-                    pos.add_span(lhs.position().span+1);
-                    fn_call.args.insert(0,lhs.clone());
-                    let expr=FnCall(fn_call,pos);
-                    lhs=expr;
-                }else{
-                    let mut pos00=lhs.position();
-                    pos00.add_span(1+pos0.span);
-                    let member_access=Expr::MemberAccess(Box::new(lhs.clone()),name.into(),pos00);
-                    lhs=member_access;
+            let (peek, pos)=self.token_stream.peek();
+            match peek{
+                Token::Dot=>{
+                    self.token_stream.next();
+                    let (next, pos0)=self.token_stream.next();
+                    let name=next.get_identifier_value();
+                    let (peek1,pos1)=self.token_stream.peek();
+                    if let Token::BraceLeft=peek1{
+                        let (args,pos1)=self.parse_fn_call_args()?;
+                        // let (mut fn_call,mut pos)=self.parse_fn_call_expr(name,pos0)?;
+                        // pos.add_span(lhs.position().span+1);
+                        // fn_call.args.insert(0,lhs.clone());
+                        let mut fn_call=FnCallExpr{
+                            name: name.into(),
+                            args,
+                        };
+                        let mut p=lhs.position();
+                        p.add_span(1+pos0.span+pos1.span);
+                        fn_call.args.push(lhs);
+                        let expr=FnCall(fn_call,p);
+                        lhs=expr;
+                    }else{
+                        let mut pos00=lhs.position();
+                        pos00.add_span(1+pos0.span);
+                        let member_access=Expr::MemberAccess(Box::new(lhs.clone()),name.into(),pos00);
+                        lhs=member_access;
+                    }
                 }
-
-            }else{
-                return Ok(lhs)
+                Token::BraceLeft=>{
+                    let(mut args,pos)=self.parse_fn_call_args()?;
+                    let mut fn_call_expr=FnCallExpr{
+                        name:"".into(),
+                        args:vec![],
+                    };
+                    match lhs.clone() {
+                        Expr::Variable(s,_)=>{
+                            fn_call_expr.name=s;
+                        }
+                        Expr::MemberAccess(b,n,_)=>{
+                            fn_call_expr.name=n;
+                            args.insert(0,*b)
+                        }
+                        _=>panic!("only variable and member_access expected")
+                    }
+                    fn_call_expr.args=args;
+                    lhs=Expr::FnCall(fn_call_expr,pos)
+                }
+                _=>{
+                    return Ok(lhs)
+                }
             }
         }
     }
     fn parse_term(&mut self)->PipelineResult<Expr>{
-        let lhs=self.parse_function_call_chain()?;
+        let lhs=self.parse_expr_call_chain()?;
         let (token,mut pos)=self.token_stream.peek();
         match token {
             Token::Mul=>{
@@ -525,15 +611,15 @@ impl PipelineParser{
                 pos.add_span(1+right.position().span+lhs.position().span);
                 Ok(BinaryExpr(Op::Mod,Box::new(lhs),Box::new(right),pos))
             }
-            Token::Dot=>{
-                self.token_stream.next();
-                let (next, pos0)=self.token_stream.next();
-                let name=next.get_identifier_value();
-                let (mut fn_call,mut pos)=self.parse_fn_call_expr(name,pos0)?;
-                pos.add_span(lhs.position().span+1);
-                fn_call.args.insert(0,lhs);
-                Ok(FnCall(fn_call,pos))
-            }
+            // Token::Dot=>{
+            //     self.token_stream.next();
+            //     let (next, pos0)=self.token_stream.next();
+            //     let name=next.get_identifier_value();
+            //     let (mut fn_call,mut pos)=self.parse_fn_call_expr(name,pos0)?;
+            //     pos.add_span(lhs.position().span+1);
+            //     fn_call.args.insert(0,lhs);
+            //     Ok(FnCall(fn_call,pos))
+            // }
             // Token::String(s) => {
             //     Ok(Expr::StringConstant(s,pos))
             // }

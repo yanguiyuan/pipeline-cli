@@ -63,10 +63,18 @@ impl Value {
     }
     pub fn is_mutable(&self)->bool{
         match self {
-            Value::Mutable(_) => {true}
+            Value::Mutable(_) => true,
             _=>false
         }
     }
+    pub fn can_mutable(&self)->bool{
+        match self {
+            Value::Mutable(_) => true,
+            Value::Refer(_)=>true,
+            _=>false
+        }
+    }
+
     pub fn as_dynamic(&self)->Dynamic{
         match self {
             Value::Immutable(d) => {d.clone()}
