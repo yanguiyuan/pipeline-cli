@@ -9,7 +9,10 @@ pub enum Stmt{
     Return(Box<Expr>,Position),
     If(Box<IfStmt>,Position),
     While(Box<Expr>,Box<Vec<Stmt>>,Position),
-    ArrayAssign(String,Box<Expr>,Box<Expr>,Position),
+    /// 第一个Expr表示的是获取Array或者Map的表达式
+    /// 第二个Expr表示的是获取索引的表达式
+    /// 第三个Expr表示的是对索引处的赋值
+    IndexAssign(Box<Expr>,Box<Expr>,Box<Expr>,Position),
     Import(String,Position),
     Noop
 }
@@ -74,7 +77,7 @@ impl Stmt{
             Stmt::While(_,_,pos)=>{
                 pos.clone()
             }
-            Stmt::ArrayAssign(_,_,_,pos)=>{
+            Stmt::IndexAssign(_,_,_,pos)=>{
                 pos.clone()
             }
             Stmt::Import(_,pos)=>{

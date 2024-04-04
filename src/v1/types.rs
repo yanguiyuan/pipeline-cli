@@ -567,6 +567,18 @@ impl Dynamic{
             _=>false,
         }
     }
+    pub fn is_array(&self)->bool{
+        match self {
+            Dynamic::Array(_)=>true,
+            _=>false
+        }
+    }
+    pub fn is_map(&self)->bool{
+        match self {
+            Dynamic::Map(_)=>true,
+            _=>false
+        }
+    }
     pub fn as_variable(&self)->Option<String>{
         match self {
             Dynamic::Variable(s)=>Some(s.clone()),
@@ -606,6 +618,12 @@ impl Dynamic{
     pub fn as_mut_array(&mut self)->Option<&mut Vec<Value>>{
         match self {
             Dynamic::Array( i)=>Some(i),
+            _=>None
+        }
+    }
+    pub fn as_mut_map(&mut self)->Option<&mut HashMap<Dynamic,Value>>{
+        match self {
+            Dynamic::Map( i)=>Some(i),
             _=>None
         }
     }

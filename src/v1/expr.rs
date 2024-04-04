@@ -15,7 +15,7 @@ pub enum Expr{
     BinaryExpr(Op,Box<Expr>,Box<Expr>,Position),
     Array(Vec<Expr>,Position),
     Map(Vec<(Expr,Expr)>,Position),
-    Index(String,Box<Expr>,Position),
+    Index(Box<Expr>,Box<Expr>,Position),
     Struct(StructExpr,Position),
     /// a=Person::new()
     /// a.name  -> MemberAccess

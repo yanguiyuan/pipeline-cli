@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock, Weak};
+use std::sync::{Arc, RwLock, RwLockWriteGuard, Weak};
 use crate::context::{Context, EmptyContext};
 use crate::context::PipelineContextValue;
 use crate::engine::{PipelineEngine};
@@ -102,16 +102,24 @@ impl Interpreter{
                }
 
             }
-            Stmt::ArrayAssign(s,i,v,_)=>{
-                let scope=PipelineEngine::context_with_scope(&ctx);
-                let  a=PipelineEngine::context_with_dynamic(&ctx,s.clone()).unwrap();
-                let mut a=a.get_mut_arc();
-                let mut a=a.write().unwrap();
-                let mut a=a.as_mut_array().unwrap();
+            Stmt::IndexAssign(target,i,v,_)=>{
+
                 let i=self.eval_expr(ctx.clone(),*i)?;
-                let i=i.as_dynamic().as_integer().unwrap();
-                let v=self.eval_expr(ctx,*v)?;
-                a[i as usize]=v.as_weak().into()
+                let v=self.eval_expr(ctx.clone(),*v)?;
+                let target=self.eval_expr(ctx,*target)?;
+                let target=target.get_mut_arc();
+                let mut target=target.write().unwrap();
+                if target.is_array(){
+                    let a=target.as_mut_array().unwrap();
+                    let index=i.as_dynamic().as_integer().unwrap();
+                    a[index as usize]=v;
+                }else if target.is_map(){
+                    let m=target.as_mut_map().unwrap();
+                    let key=i.as_dynamic();
+                    m.insert(key,v);
+                }else{
+                    panic!("{} cannot support index assign",target.type_name())
+                }
             }
             Stmt::While(b,blocks,_)=>{
                 let d=self.eval_expr(ctx.clone(),*b.clone())?;
@@ -140,9 +148,9 @@ impl Interpreter{
     pub  fn eval_let_stmt(&mut self, ctx:Arc<RwLock<dyn Context<PipelineContextValue>>>, l:Box<(String,Expr)>)->PipelineResult<Value>{
         // let d=self.eval_expr(ctx.clone(),l.0)?;
 
-        let d=self.eval_expr(ctx.clone(),l.1)?;
+        let mut d =self.eval_expr(ctx.clone(), l.1)?;
         if !d.is_mutable(){
-            panic!("必须是mutable")
+            d=Value::Mutable(d.as_arc());
         }
         let scope=PipelineEngine::context_with_scope(&ctx);
         let mut scope=scope.write().unwrap();
@@ -172,7 +180,10 @@ impl Interpreter{
                 let mut dv=vec![];
                 for e in v{
                     let d=self.eval_expr(ctx.clone(), e)?;
-                    dv.push(d.as_weak().into())
+                    if d.is_mutable(){
+                        panic!("不能持有所有权")
+                    }
+                    dv.push(d)
                 }
                 Ok(Value::Mutable(Arc::new(RwLock::new(Dynamic::Array(dv)))))
             }
@@ -186,37 +197,33 @@ impl Interpreter{
                 Ok(Value::Mutable(Arc::new(RwLock::new(Dynamic::Map(dv)))))
             }
             Expr::Index(s,e,_)=>{
-                let d=PipelineEngine::context_with_dynamic(&ctx,s.clone());
+                let d=self.eval_expr(ctx.clone(),*s)?;
+                let d=d.as_dynamic();
                 match d {
-                    None => {
-                        Err(PipelineError::VariableUndefined(s))
+                    Dynamic::Array(a) => {
+                        let index=self.eval_expr(ctx,*e)?;
+                        let index=index.as_dynamic().as_integer().unwrap();
+                        Ok(a[index as usize].clone())
                     }
-                    Some(d) => {
-                        match d.as_dynamic() {
-                            Dynamic::Array(a) => {
-                                let index=self.eval_expr(ctx,*e)?;
-                                let index=index.as_dynamic().as_integer().unwrap();
-                                Ok(a[index as usize].clone())
-                            }
-                            Dynamic::Map(m) => {
-                                let index=self.eval_expr(ctx,*e)?;
-                                let index=index.as_dynamic();
-                                Ok(m[&index].clone())
-                            }
-                            Dynamic::String(s)=>{
-                                let index=self.eval_expr(ctx,*e)?;
-                                let index=index.as_dynamic().as_integer().unwrap();
-                                let r=String::from(s.chars().nth(index as usize).unwrap());
-                                Ok(r.into())
-                            }
-                            t=>{
-                                return Err(PipelineError::UndefinedOperation(format!("index [] to {}",t.type_name())))
-                            }
-                        }
-
+                    Dynamic::Map(m) => {
+                        let index=self.eval_expr(ctx,*e)?;
+                        let index=index.as_dynamic();
+                        Ok(m[&index].clone())
+                    }
+                    Dynamic::String(s)=>{
+                        let index=self.eval_expr(ctx,*e)?;
+                        let index=index.as_dynamic().as_integer().unwrap();
+                        let r=String::from(s.chars().nth(index as usize).unwrap());
+                        Ok(r.into())
+                    }
+                    t=>{
+                        return Err(PipelineError::UndefinedOperation(format!("index [] to {}",t.type_name())))
                     }
                 }
+
             }
+
+
             Expr::BinaryExpr(op,l,r,_)=>{
                 match op {
                     Op::Plus => {
@@ -288,10 +295,7 @@ impl Interpreter{
                 let mut props=HashMap::new();
                 for (k,i) in e.get_props(){
                     let mut v=self.eval_expr(ctx.clone(),i.clone())?;
-                    if v.is_mutable(){
-                        panic!("不能持有其所有权")
-                    }
-                    if v.is_immutable(){
+                    if v.is_immutable()||v.is_mutable(){
                         let scope=PipelineEngine::context_with_scope(&ctx);
                         let mut scope=scope.write().unwrap();
                         let  v0=Value::Mutable(v.as_arc());
@@ -316,6 +320,7 @@ impl Interpreter{
             }
             Expr::MemberAccess(father,prop,_)=>{
                 let obj=self.eval_expr(ctx,*father)?;
+                // println!("{:?}",obj);
                 let obj=obj.as_dynamic().as_struct().unwrap();
                 let r=obj.get_prop(&prop).unwrap();
                 return Ok(r)

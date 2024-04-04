@@ -315,7 +315,11 @@ impl PipelineParser{
                 self.token_stream.next();
                 let expr = self.parse_expr()?;
                 pos0.add_span(expr.position().span);
-                return Ok(Stmt::Assign(Box::new((lhs, expr)), pos0))
+                if let Expr::Index(target,index,mut pos1)=lhs{
+                    pos1.add_span(pos0.span);
+                    return Ok(Stmt::IndexAssign(target,index,Box::new(expr),pos1))
+                }
+                return Ok(Stmt::Assign(Box::new((lhs.clone(), expr)), pos0))
             }
             Token::BraceLeft => {
                 let(mut args,pos)=self.parse_fn_call_args()?;
@@ -497,7 +501,7 @@ impl PipelineParser{
                         let e=self.parse_math_expr()?;
                         self.parse_special_token(Token::SquareBracketRight)?;
                         pos1.add_span(1+e.position().span+1);
-                        return Ok(Expr::Index(ident,Box::new(e),pos1))
+                        return Ok(Expr::Index(Box::new(Expr::Variable(ident,pos)),Box::new(e),pos1))
                     }
                     Token::ParenthesisLeft=>{
                         let mut props=HashMap::new();
@@ -518,7 +522,8 @@ impl PipelineParser{
                                 Token::Identifier(s)=>{
                                     self.token_stream.next();
                                     self.parse_special_token(Token::Colon)?;
-                                    let expr=self.parse_expr()?;
+                                    let expr=self.parse_expr();
+                                    let expr=expr.unwrap();
                                     pos.add_span(pos2.span+1+expr.position().span);
                                     props.insert(s,expr);
                                 }
@@ -554,7 +559,7 @@ impl PipelineParser{
                         };
                         let mut p=lhs.position();
                         p.add_span(1+pos0.span+pos1.span);
-                        fn_call.args.push(lhs);
+                        fn_call.args.insert(0,lhs);
                         let expr=FnCall(fn_call,p);
                         lhs=expr;
                     }else{
@@ -582,6 +587,14 @@ impl PipelineParser{
                     }
                     fn_call_expr.args=args;
                     lhs=Expr::FnCall(fn_call_expr,pos)
+                }
+                Token::SquareBracketLeft=>{
+                    let mut pos1=lhs.position();
+                    self.token_stream.next();
+                    let e=self.parse_math_expr()?;
+                    self.parse_special_token(Token::SquareBracketRight)?;
+                    pos1.add_span(1+e.position().span+1);
+                    return Ok(Expr::Index(Box::new(lhs),Box::new(e),pos1))
                 }
                 _=>{
                     return Ok(lhs)

@@ -92,7 +92,9 @@ impl Module{
     }
     pub fn merge(&mut self,module: &Module){
         for (k,v) in &module.functions{
-            self.functions.insert(k.clone(),v.clone());
+            if !self.functions.contains_key(k){
+                self.functions.insert(k.clone(),v.clone());
+            }
         }
     }
     pub fn with_std_module()->Self{
@@ -167,6 +169,22 @@ impl Module{
         std.register_pipe_function("type",|_,args|{
             let c=args.get(0).unwrap();
             Ok(c.as_dynamic().type_name().into())
+        });
+        std.register_pipe_function("clone",|_,args|{
+            let c=args.get(0).unwrap();
+            Ok(match c {
+                Value::Immutable(i) => {
+                    i.clone().into()
+                }
+                Value::Mutable(m) => {
+                    let a=m.read().unwrap().clone();
+                    Value::Mutable(Arc::new(RwLock::new(a)))
+                }
+                Value::Refer(r) => {
+                    let a=r.upgrade().unwrap().read().unwrap().clone();
+                    Value::Mutable(Arc::new(RwLock::new(a)))
+                }
+            })
         });
         std.register_pipe_function("readInt",|ctx,args|{
 
