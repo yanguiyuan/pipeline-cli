@@ -1,2 +1,15 @@
-var a=readFloat("请输入Float:")
-println(a)
+import pipe
+
+pipeline("dev"){
+	step("run"){
+		cmd("echo hello")
+		//cmd("go run main.go")
+	}
+}
+/*
+pipeline("dev"){
+    step("run"){
+        cmd("echo hello")
+    }
+}
+*/

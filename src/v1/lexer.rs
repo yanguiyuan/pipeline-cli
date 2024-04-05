@@ -210,7 +210,7 @@ impl Lexer{
                             self.increase_index();
                             return r
                         }
-                        (' '|'\n'|'\r'|';',_)=>{
+                        (' '|'\n'|'\r'|';'|'\t',_)=>{
                             self.next_char();
                         },
                         ('/','/')=>{
@@ -230,7 +230,8 @@ impl Lexer{
                             self.next_char();
                             return r
                         }
-                        _ => {
+                        t => {
+                            // println!("{:?}",t);
                             return None
                         }
                     }
