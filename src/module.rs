@@ -393,7 +393,7 @@ impl Module{
             scope.set("layoutName",Value::Mutable(Arc::new(RwLock::new(Dynamic::String(name)))));
             drop(scope);
             ptr.call(&mut e,ctx.clone()).unwrap();
-            println!("╰─▶successfully finished.");
+            println!("╰─▶successfully finished.\x1b[0m");
             Ok(().into())
         });
         layout.register_pipe_function("template",|ctx,args|{
