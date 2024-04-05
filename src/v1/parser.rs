@@ -56,7 +56,7 @@ impl PipelineParser{
             return match token {
                 Token::Keyword(k)=>{
                     match k.as_str() {
-                        "let"=>{
+                        "let"|"var"|"val"=>{
                             return self.parse_let_stmt()
                         }
                         "fn"|"fun"=>{

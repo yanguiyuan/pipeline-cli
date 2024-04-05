@@ -189,7 +189,6 @@ impl Module{
             })
         });
         std.register_pipe_function("readInt",|ctx,args|{
-
             if args.len()>0{
                 let c=args.get(0).unwrap().as_dynamic().as_string().unwrap();
                 print!("{c}");
@@ -200,6 +199,32 @@ impl Module{
             let mut sc=sc.write().unwrap();
             let mut sc=sc.downcast_mut::<Scanner<Stdin>>().unwrap();
             let i =sc.next_i64().unwrap().unwrap();
+            Ok(i.into())
+        });
+        std.register_pipe_function("readFloat",|ctx,args|{
+            if args.len()>0{
+                let c=args.get(0).unwrap().as_dynamic().as_string().unwrap();
+                print!("{c}");
+                io::stdout().flush().unwrap();
+            }
+            let sc=PipelineEngine::context_with_native(&ctx,"$sc");
+
+            let mut sc=sc.write().unwrap();
+            let mut sc=sc.downcast_mut::<Scanner<Stdin>>().unwrap();
+            let i =sc.next_f64().unwrap().unwrap();
+            Ok(i.into())
+        });
+        std.register_pipe_function("readString",|ctx,args|{
+            if args.len()>0{
+                let c=args.get(0).unwrap().as_dynamic().as_string().unwrap();
+                print!("{c}");
+                io::stdout().flush().unwrap();
+            }
+            let sc=PipelineEngine::context_with_native(&ctx,"$sc");
+
+            let mut sc=sc.write().unwrap();
+            let mut sc=sc.downcast_mut::<Scanner<Stdin>>().unwrap();
+            let i =sc.next().unwrap().unwrap();
             Ok(i.into())
         });
         std.register_pipe_function("cmd",|ctx,args| {
@@ -356,7 +381,7 @@ impl Module{
         let  mut layout=Module::new("layout");
         layout.register_pipe_function("layout",|ctx,args|{
             let name=args.get(0).unwrap().as_string().unwrap();
-            println!("using layout {}",name);
+            println!("\x1b[32musing layout {}",name);
             let mut ptr=args.get(1).unwrap().as_dynamic().as_fn_ptr().unwrap();
             let mut e=PipelineEngine::default();
             let share_module=PipelineEngine::context_with_shared_module(&ctx);
@@ -368,13 +393,14 @@ impl Module{
             scope.set("layoutName",Value::Mutable(Arc::new(RwLock::new(Dynamic::String(name)))));
             drop(scope);
             ptr.call(&mut e,ctx.clone()).unwrap();
+            println!("╰─▶successfully finished.");
             Ok(().into())
         });
         layout.register_pipe_function("template",|ctx,args|{
             let target=args.get(0).unwrap().as_string().unwrap();
             let template=args.get(1).unwrap().as_string().unwrap();
-            println!("using template {} to generate {}",template,target);
-            let mut ptr=args.get(2).unwrap().as_dynamic().as_fn_ptr().unwrap();
+            println!("╰─▶using template {} to generate {}.",template,target);
+
             let mut e=PipelineEngine::default();
             let scope=PipelineEngine::context_with_scope(&ctx);
             let mut scope=scope.write().unwrap();
@@ -384,7 +410,12 @@ impl Module{
             let share_module=PipelineEngine::context_with_shared_module(&ctx);
             let i=Interpreter::with_shared_module(share_module);
             e.set_interpreter(&i);
-            ptr.call(&mut e,ctx.clone()).unwrap();
+            let mut ptr=args.get(2);
+            // let mut ptr=args.get(2).unwrap().as_dynamic().as_fn_ptr().unwrap();
+            if let Some(p)=ptr{
+                let mut ptr=p.as_dynamic().as_fn_ptr().unwrap();
+                ptr.call(&mut e,ctx.clone()).unwrap();
+            }
             let m=v.read().unwrap();
             let layout_name=PipelineEngine::context_with_dynamic(&ctx,"layoutName").unwrap().as_string().unwrap();
             let home_dir = dirs::home_dir().expect("无法获取用户根目录");
@@ -411,6 +442,15 @@ impl Module{
             let key=args.get(1).unwrap().as_string().unwrap();
             let value=args.get(2).unwrap().as_string().unwrap();
             hashmap.insert(key,value);
+            Ok(().into())
+        });
+        layout.register_pipe_function("folder",|ctx,args|{
+            let folder_name=args.get(0).unwrap().as_string().unwrap();
+            println!("╰─▶creating folder {}.",folder_name);
+            let target_path=PathBuf::from(folder_name.as_str());
+            if !target_path.exists(){
+                fs::create_dir_all(target_path).unwrap();
+            }
             Ok(().into())
         });
         return layout

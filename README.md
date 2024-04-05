@@ -5,20 +5,40 @@
 cargo install pipeline-cli
 ```
 
-### 内建函数
+### 内置模块
+#### 1. std标准库，无需导入
 
-- pipeline(pipeline_name:String,closure:Closure):包裹一组由step和parallel组成的任务
-- step(name:String,closure:Closure) 一个普通的任务，会阻塞后面的任务执行
-- parallel(name:String,closure:Closure) 一个并行的任务，不会阻塞后面的任务执行
 - cmd(command:String) 调用sh（linux）或者powershell执行一条命令
 - env(key:String,value:String) 设置当前任务的环境变量
-- max(..a:Int|Float) 返回一串Int或者Float数中的最大值
 - println(..a:Any) 输入任意值，将其打印到控制台,带换行。（注意：pipeline任务运行的时候，其日志输出会覆盖println的内容）
+- print(..a:Any)
 - workspace(path:String) 切换当前命令的工作空间，影响cmd，movefile,replace函数中路径的书写
 - move(source_path:String,target_path:String) 将一个文件从source_path移动到target_path处，如果target_path路径不存在会尝试创建一系列文件夹
 - replace(file_path:String,regex:String,replace_content:String) 通过正则将file_path处的文件中的内容替换成replace_content
 - copy(source_path:String,target_path:String) 将一个文件从source_path复制到target_path处,如果target_path路径不存在会尝试创建一系列文件夹
+- readInt(hint:String),
+- readString(hint:String),
+- readFloat(hint:String),
+- readLine(hint:String),
 
+#### 2.pipe 任务模块
+使用`import pipe`导入
+
+- pipeline(pipeline_name:String,closure:Closure):包裹一组由step和parallel组成的任务
+- step(name:String,closure:Closure) 一个普通的任务，会阻塞后面的任务执行
+- parallel(name:String,closure:Closure) 一个并行的任务，不会阻塞后面的任务执行
+
+#### 3.math 数学库
+- max(..a:Int|Float) 返回一串Int或者Float数中的最大值
+- randomInt() 生成一个随机的Int值
+- randomInt(n:Int) 生成一个随机的Int值，范围在0~n之间
+- randomInt(start:Int,end:Int)生成一个随机的Int值，范围在start~end之间
+
+#### 4.layout 项目布局生成库
+- layout(name:String) 包裹一组文件
+- template(targetPath:String,templatePath:String,fn:Closure) 表示的是一个文件，使用templatePath处的模板生成一个targetPath文件,fn中会有一个隐藏的ctx变量用于调用set函数
+- set(ctx:Map,key:String,value:String) 设置一个映射，用于使用value替换模版文件中捕获的${key}
+- folder(path:String) 创建一个目录
 ### 语法
 1. 注释
 ```
@@ -51,15 +71,13 @@ if a{
 ```
 5. 声明变量
 
-let可以省略(let a=1和a=1是等价的，都可以声明并初始化变量或者改变原有值)
+let,var,val目前是等价的,val和var目的是使用kotlin script 的代码提示
 ```
 let a=1
 let a=1.25
 let a="hello"
-let a=true
-let b=a
-a=123
-b=[1,2,34]
+var a=true
+val b=a
 ```
 
 6.循环
@@ -83,7 +101,65 @@ while a>1{
 
 ```
 
+8.模块导入
+
+默认会去用户目录的.pipeline/package下寻找，以下示例会去寻找~/.pipeline/package/math.kts文件，如果没找到，默认去当前目录下找math.kts
+```kotlin
+import math
+```
 ### Examples
+#### 使用layout定义并生成项目结构
+假设我们需要再一个目录下生成项目相关文件，其结构如下：
+
+    internal/
+
+    pkg/
+
+    main.go
+
+    go.mod
+
+则我们需要确保~/.pipeline/layout/go/layout.kts文件中内容如下：
+
+```kts
+import layout
+val projectName = readString("请输入项目名:");
+layout("go"){
+    template("main.go","main.go.tpl")
+    template("go.mod","go.mod.tpl"){
+        ctx.set("projectName",projectName)
+    }
+    folder("internal")
+    folder("pkg")
+}
+
+```
+同目录下的main.go.tpl内容如下：
+```go
+package main
+
+import "fmt"
+
+func main(){
+    fmt.Println("Hello,World!")
+}
+
+```
+同目录下的go.mod.tpl内容如下
+```go
+module ${projectName}
+
+go 1.21
+```
+
+最后我们创建一个demo目录，切换到demo目录下，使用一下命令：
+```bash
+pipeline layout go
+```
+它会提示你输入项目名，输入完毕后会生成对应的结构
+
+
+#### pipeline 配置多个任务
 需要在项目目录下添加一个名为pipeline.kts的文件，文件语法采用kotlin dsl语法，仅支持函数使用内建函数进行调用
 
 一个pipeline.kts的例子:
