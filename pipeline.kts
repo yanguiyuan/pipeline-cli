@@ -1,11 +1,7 @@
-/*
-struct Person{
-    name:String
-    age:Int
-}
-*/
-import map
+import layout
 
-let m=1
-m.set(1,12)
-println(m)
+layout("go"){
+    template("tests/main.go","main.tpl"){
+        ctx.set("content","Hello,World")
+    }
+}

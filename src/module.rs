@@ -1,12 +1,14 @@
 
 use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
-use std::{io, thread};
+use std::{fs, io, thread};
+use std::fs::File;
 use std::io::{Stdin, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::exit;
 use std::sync::{Arc, RwLock};
 use rand::{random, Rng};
+use regex::Regex;
 use scanner_rust::Scanner;
 use crate::builtin::{cmd, copy, move_file, replace};
 use crate::context::{Context, PipelineContextValue};
@@ -349,6 +351,69 @@ impl Module{
             Ok(().into())
         });
         return pipe
+    }
+    pub fn with_layout_module()->Self{
+        let  mut layout=Module::new("layout");
+        layout.register_pipe_function("layout",|ctx,args|{
+            let name=args.get(0).unwrap().as_string().unwrap();
+            println!("using layout {}",name);
+            let mut ptr=args.get(1).unwrap().as_dynamic().as_fn_ptr().unwrap();
+            let mut e=PipelineEngine::default();
+            let share_module=PipelineEngine::context_with_shared_module(&ctx);
+            let i=Interpreter::with_shared_module(share_module);
+            e.set_interpreter(&i);
+            let scope=PipelineEngine::context_with_scope(&ctx);
+            let mut scope=scope.write().unwrap();
+            let v:Arc<RwLock<HashMap<String,String>>>=Arc::new(RwLock::new(HashMap::new()));
+            scope.set("layoutName",Value::Mutable(Arc::new(RwLock::new(Dynamic::String(name)))));
+            drop(scope);
+            ptr.call(&mut e,ctx.clone()).unwrap();
+            Ok(().into())
+        });
+        layout.register_pipe_function("template",|ctx,args|{
+            let target=args.get(0).unwrap().as_string().unwrap();
+            let template=args.get(1).unwrap().as_string().unwrap();
+            println!("using template {} to generate {}",template,target);
+            let mut ptr=args.get(2).unwrap().as_dynamic().as_fn_ptr().unwrap();
+            let mut e=PipelineEngine::default();
+            let scope=PipelineEngine::context_with_scope(&ctx);
+            let mut scope=scope.write().unwrap();
+            let v:Arc<RwLock<HashMap<String,String>>>=Arc::new(RwLock::new(HashMap::new()));
+            scope.set("ctx",Value::Mutable(Arc::new(RwLock::new(Dynamic::Native(v.clone())))));
+            drop(scope);
+            let share_module=PipelineEngine::context_with_shared_module(&ctx);
+            let i=Interpreter::with_shared_module(share_module);
+            e.set_interpreter(&i);
+            ptr.call(&mut e,ctx.clone()).unwrap();
+            let m=v.read().unwrap();
+            let layout_name=PipelineEngine::context_with_dynamic(&ctx,"layoutName").unwrap().as_string().unwrap();
+            let home_dir = dirs::home_dir().expect("无法获取用户根目录");
+            let template_path=home_dir.join(".pipeline").join(format!("layout/{}/{}",layout_name,template));
+            let template_content=fs::read_to_string(template_path).unwrap();
+            let re = Regex::new(r"\$\{([a-zA-Z_][a-zA-Z0-9_]*)\}").unwrap();
+            let replaced = re.replace_all(template_content.as_str(), |caps: &regex::Captures| {
+                let key=&caps[1];
+                let r=m.get(key).unwrap();
+                r.as_str()
+            });
+            let target_path=PathBuf::from(target.as_str());
+            if !target_path.exists(){
+                fs::create_dir_all(target_path.parent().unwrap()).unwrap();
+            }
+            let mut file=File::create(target).unwrap();
+            file.write_all(replaced.as_bytes()).unwrap();
+            Ok(().into())
+        });
+        layout.register_pipe_function("set",|ctx,args|{
+            let hashmap=args.get(0).unwrap().as_dynamic().as_native().unwrap();
+            let mut hashmap=hashmap.write().unwrap();
+            let hashmap=hashmap.downcast_mut::<HashMap<String,String>>().unwrap();
+            let key=args.get(1).unwrap().as_string().unwrap();
+            let value=args.get(2).unwrap().as_string().unwrap();
+            hashmap.insert(key,value);
+            Ok(().into())
+        });
+        return layout
     }
     pub fn register_native_function<A:'static,F>(&mut self, name:impl Into<String>, f:F )
     where F:NativeFunction<A>

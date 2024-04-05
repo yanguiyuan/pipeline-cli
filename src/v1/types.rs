@@ -8,7 +8,7 @@ use std::sync::{Arc, RwLock, RwLockWriteGuard, Weak};
 use crate::context::{Context, PipelineContextValue};
 use crate::engine::{PipelineEngine};
 use crate::error::PipelineResult;
-use crate::v1::expr::{Expr, FnCallExpr, StructExpr};
+use crate::v1::expr::{Expr, FnCallExpr, Op, StructExpr};
 use crate::v1::parser::FnDef;
 #[derive(Debug,Clone)]
 pub enum Dynamic{
@@ -630,6 +630,12 @@ impl Dynamic{
     pub fn as_struct(&self)->Option<Box<Struct>>{
         match self {
             Dynamic::Struct(i)=>Some(i.clone()),
+            _=>None
+        }
+    }
+    pub fn as_native(&self)->Option<Arc<RwLock<dyn Any+Send+Sync>>>{
+        match self {
+            Dynamic::Native(a)=>Some(a.clone()),
             _=>None
         }
     }

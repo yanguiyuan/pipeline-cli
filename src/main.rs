@@ -37,10 +37,16 @@ enum Commands {
     /// List tasks which can execute.
     // List,
     Template(TemplateArgs),
+    // using special layout to generate project struct.
+    Layout(LayoutArgs)
 }
 #[derive(Args)]
 struct RunArgs{
     path:Option<String>
+}
+#[derive(Args)]
+struct LayoutArgs{
+    layout:Option<String>
 }
 #[derive(Args)]
 struct InitArgs{
@@ -122,6 +128,29 @@ fn handle_pipeline_err(e:PipelineError){
 fn cli(){
     let cli=Cli::parse();
     match &cli.command {
+        Commands::Layout(s)=>{
+            match &s.layout {
+                None => {}
+                Some(layout_name) => {
+                    let mut engine=PipelineEngine::default();
+                    let layout=Module::with_layout_module();
+                    engine.register_module(layout);
+                    let home_dir = dirs::home_dir().expect("无法获取用户根目录");
+                    let path=home_dir.join(".pipeline").join(format!("layout/{}/layout.kts",layout_name));
+                    let script=fs::read_to_string(path).unwrap();
+                    let stmt=engine.compile_stmt_blocks(script.clone()).unwrap();
+                    let background=PipelineEngine::background();
+                    let r=engine.eval_stmt_blocks_from_ast_with_context(background,stmt);
+                    match r {
+                        Ok(_) => {}
+                        Err(e) => {
+                            handle_pipeline_err(e);
+                        }
+                    }
+                }
+            }
+
+        }
         Commands::Init(t) => {
             handle_init(t.template.clone().unwrap().as_str());
         }
@@ -138,7 +167,9 @@ fn cli(){
             }
             let mut engine=PipelineEngine::default_with_pipeline();
             let math=Module::with_math_module();
+            let layout=Module::with_layout_module();
             engine.register_module(math);
+            engine.register_module(layout);
             let script=fs::read_to_string("pipeline.kts").unwrap();
             let stmt=engine.compile_stmt_blocks(script.clone());
             println!("{:#?}",stmt);
