@@ -162,6 +162,39 @@ impl Module{
             println!();
             Ok(().into())
         });
+        std.register_pipe_function("remove",|ctx,args|{
+            let target=args.get(0).unwrap().as_dynamic();
+            match target {
+                Dynamic::Array(a)=>{
+                    let a=args.get(0).unwrap().as_arc();
+                    let mut a=a.write().unwrap();
+                    let a=a.as_mut_array().unwrap();
+                    let index=args.get(1).unwrap().as_dynamic();
+                    let index=index.as_integer().unwrap();
+                    a.remove(index as usize);
+                }
+                Dynamic::Map(_)=>{
+                    let key=args.get(1).unwrap().as_dynamic();
+                    let m=args.get(0).unwrap().as_arc();
+                    let mut m=m.write().unwrap();
+                    let m=m.as_mut_map().unwrap();
+                    m.remove(&key);
+                }
+                t=>{
+                    panic!("{} not support remove",t.type_name())
+                }
+            }
+            Ok(().into())
+        });
+        std.register_pipe_function("append",|ctx,args|{
+            let target=args.get(0).unwrap().as_arc();
+            let mut target=target.write().unwrap();
+            let target_array=target.as_mut_array().unwrap();
+            for it in args.iter().skip(1){
+                target_array.push(it.clone());
+            }
+            Ok(().into())
+        });
         std.register_pipe_function("readLine",|_,args|{
             if args.len()>0{
                 let c=args.get(0).unwrap().as_dynamic().as_string().unwrap();
