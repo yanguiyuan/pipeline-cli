@@ -1,15 +1,6 @@
-import pipe
-
-pipeline("dev"){
-	step("run"){
-		cmd("echo hello")
-		//cmd("go run main.go")
-	}
+fun test(f:Fun){
+    f.call("nihao","123")
 }
-/*
-pipeline("dev"){
-    step("run"){
-        cmd("echo hello")
-    }
+test(){
+    println("Hello,Test",it[0])
 }
-*/

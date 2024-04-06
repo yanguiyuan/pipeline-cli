@@ -121,6 +121,26 @@ impl Module{
             }
             Ok(().into())
         });
+        std.register_pipe_function("call",|ctx,args|{
+            let blocks=args.get(0).unwrap().as_dynamic().as_fn_ptr().unwrap().fn_def.unwrap().body;
+            let mut e=PipelineEngine::default_with_pipeline();
+            let share_module=PipelineEngine::context_with_shared_module(&ctx);
+            let i=Interpreter::with_shared_module(share_module);
+            e.set_interpreter(&i);
+            if args.len()>1{
+                let scope=PipelineEngine::context_with_scope(&ctx);
+                let  mut scope=scope.write().unwrap();
+                if args.len()==2{
+                    let v=args.get(1).unwrap().clone();
+                    scope.set("it",v);
+                }else{
+                    let args_list=args[1..args.len()].to_vec();
+                    scope.set("it",Value::Mutable(Arc::new(RwLock::new(Dynamic::Array(args_list)))));
+                }
+            }
+            e.eval_stmt_blocks_from_ast_with_context(ctx,blocks).unwrap();
+            Ok(().into())
+        });
         std.register_pipe_function("println",|ctx,args|{
             for v in args{
                 let v=v.as_dynamic();
