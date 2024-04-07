@@ -631,6 +631,12 @@ impl Dynamic{
             _=>None
         }
     }
+    pub fn as_array(&mut self)->Option<Vec<Value>>{
+        match self {
+            Dynamic::Array( i)=>Some(i.clone()),
+            _=>None
+        }
+    }
     pub fn as_mut_map(&mut self)->Option<&mut HashMap<Dynamic,Value>>{
         match self {
             Dynamic::Map( i)=>Some(i),

@@ -9,6 +9,7 @@ pub enum Stmt{
     Return(Box<Expr>,Position),
     If(Box<IfStmt>,Position),
     While(Box<Expr>,Box<Vec<Stmt>>,Position),
+    ForIn(String,Box<Expr>,Box<Vec<Stmt>>,Position),
     /// 第一个Expr表示的是获取Array或者Map的表达式
     /// 第二个Expr表示的是获取索引的表达式
     /// 第三个Expr表示的是对索引处的赋值
@@ -67,6 +68,7 @@ impl Stmt{
             Stmt::FnCall(_, pos) => {
                 pos.clone()
             }
+            Stmt::ForIn(_,_,_,pos)=>pos.clone(),
             Stmt::Let(_,pos)=>{
                 pos.clone()
             }

@@ -172,7 +172,7 @@ fn cli(){
             engine.register_module(layout);
             let script=fs::read_to_string("pipeline.kts").unwrap();
             let stmt=engine.compile_stmt_blocks(script.clone());
-            // println!("{:#?}",stmt);
+            println!("{:#?}",stmt);
             match stmt {
                 Ok(stmt) => {
                     let background=PipelineEngine::background();

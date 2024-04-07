@@ -1,12 +1,13 @@
-let a=10
+let a=[1,2]
+a.append(a.clone())
 println(a)
 
-while a>0{
-    a=a-1
-    if a==5{
-        continue
+for it in a{
+    println(it)
+    if it.type()=="Array"{
+        for i in it{
+            println(i)
+        }
     }
-    println(a)
-
 }
 

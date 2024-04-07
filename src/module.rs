@@ -1,7 +1,7 @@
 
 use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
-use std::{fs, io, thread};
+use std::{fs, io, ptr, thread};
 use std::fs::File;
 use std::io::{Stdin, Write};
 use std::path::{Path, PathBuf};
@@ -188,9 +188,12 @@ impl Module{
         });
         std.register_pipe_function("append",|ctx,args|{
             let target=args.get(0).unwrap().as_arc();
-            let mut target=target.write().unwrap();
-            let target_array=target.as_mut_array().unwrap();
+            let mut target0=target.write().unwrap();
+            let target_array=target0.as_mut_array().unwrap();
             for it in args.iter().skip(1){
+                if ptr::eq(&*target,&*it.as_arc()){
+                    panic!("append can not add itself,please consider clone it")
+                }
                 target_array.push(it.clone());
             }
             Ok(().into())

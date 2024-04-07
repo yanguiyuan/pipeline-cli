@@ -112,7 +112,6 @@ impl Interpreter{
 
             }
             Stmt::IndexAssign(target,i,v,_)=>{
-
                 let i=self.eval_expr(ctx.clone(),*i)?;
                 let v=self.eval_expr(ctx.clone(),*v)?;
                 let target=self.eval_expr(ctx,*target)?;
@@ -161,6 +160,30 @@ impl Interpreter{
                     }
                 }
             }
+            Stmt::ForIn(it_name, target, blocks, ..)=> {
+                let target = self.eval_expr(ctx.clone(), *target.clone())?;
+                let target = target.as_dynamic().as_array().unwrap();
+
+                'outer:for i in target{
+                    let scope=PipelineEngine::context_with_scope(&ctx);
+                    let mut scope=scope.write().unwrap();
+                    scope.set(it_name.as_str(),i);
+                    drop(scope);
+                    'inner: for i in &*blocks {
+                        let r = self.eval_stmt_with_context(ctx.clone(), i.clone())?;
+                        if let Value::Signal(s) = r {
+                            match s {
+                                SignalType::Break => {
+                                    break 'outer
+                                }
+                                SignalType::Continue => {
+                                    break 'inner
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             Stmt::Noop => {}
         }
         Ok(().into())
@@ -200,9 +223,9 @@ impl Interpreter{
                 let mut dv=vec![];
                 for e in v{
                     let d=self.eval_expr(ctx.clone(), e)?;
-                    if d.is_mutable(){
-                        panic!("不能持有所有权")
-                    }
+                    // if d.is_mutable(){
+                    //     panic!("不能持有所有权")
+                    // }
                     dv.push(d)
                 }
                 Ok(Value::Mutable(Arc::new(RwLock::new(Dynamic::Array(dv)))))
