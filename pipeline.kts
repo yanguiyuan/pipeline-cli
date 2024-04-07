@@ -1,5 +1,12 @@
+let a=10
+println(a)
 
-val a=[1,4,78,4]
-println(a)
-a.append(8,5)
-println(a)
+while a>0{
+    a=a-1
+    if a==5{
+        continue
+    }
+    println(a)
+
+}
+

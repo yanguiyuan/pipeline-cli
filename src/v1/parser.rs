@@ -47,6 +47,7 @@ impl PipelineParser{
             }
             v.push(stmt)
         }
+
         return Ok(v)
     }
 
@@ -74,8 +75,15 @@ impl PipelineParser{
                             self.parse_while_stmt()
                         }
                         "import"=>{
-
                             self.parse_import_stmt()
+                        }
+                        "break"=>{
+                            self.token_stream.next();
+                            Ok(Stmt::Break(pos))
+                        }
+                        "continue"=>{
+                            self.token_stream.next();
+                            Ok(Stmt::Continue(pos))
                         }
                         t=>Err(PipelineError::UnusedKeyword(t.into()))
                     }

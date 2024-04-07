@@ -239,6 +239,7 @@ impl Module{
                     let a=r.upgrade().unwrap().read().unwrap().clone();
                     Value::Mutable(Arc::new(RwLock::new(a)))
                 }
+                _=>panic!("signal can not be cloned")
             })
         });
         std.register_pipe_function("readInt",|ctx,args|{

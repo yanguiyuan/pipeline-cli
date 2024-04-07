@@ -7,7 +7,7 @@ use crate::error::{PipelineError, PipelineResult};
 use crate::module::{ Module};
 use crate::v1::expr::{Expr, FnCallExpr, Op};
 use crate::v1::stmt::Stmt;
-use crate::v1::types::{Dynamic, Struct, Value};
+use crate::v1::types::{Dynamic, SignalType, Struct, Value};
 
 #[derive(Clone,Debug)]
 pub struct Interpreter{
@@ -60,6 +60,12 @@ impl Interpreter{
             Stmt::Let(l,_)=>{
                 self.eval_let_stmt(ctx,l)?;
             }
+            Stmt::Break(_)=>{
+                return Ok(Value::Signal(SignalType::Break))
+            }
+            Stmt::Continue(_)=>{
+                return Ok(Value::Signal(SignalType::Continue))
+            }
             Stmt::Assign(e,_)=>{
                 let target=self.eval_expr(ctx.clone(),e.0)?;
                 let value=self.eval_expr(ctx,e.1)?;
@@ -87,6 +93,9 @@ impl Interpreter{
                                 for i in if_branch.get_body() {
                                     let t=self.eval_stmt_with_context(ctx.clone(), i.clone())?;
                                     l=Some(t)
+                                }
+                                if let None=l{
+                                    return Ok(().into())
                                 }
                                 return Ok(l.unwrap())
                             }
@@ -129,10 +138,21 @@ impl Interpreter{
                         Err(PipelineError::ExpectedType("bool".into()))
                     }
                     Some(d) => {
+
                         let mut condition=d;
-                        while condition {
-                            for i in &*blocks {
-                                self.eval_stmt_with_context(ctx.clone(), i.clone())?;
+                        'outer:while condition {
+                            'inner:for i in &*blocks {
+                                let r=self.eval_stmt_with_context(ctx.clone(), i.clone())?;
+                                if let Value::Signal(s)=r{
+                                    match s {
+                                        SignalType::Break => {
+                                            break 'outer
+                                        }
+                                        SignalType::Continue => {
+                                            break 'inner
+                                        }
+                                    }
+                                }
                             }
                              let d0=self.eval_expr(ctx.clone(),*b.clone())?;
                             condition=d0.as_dynamic().as_bool().unwrap();

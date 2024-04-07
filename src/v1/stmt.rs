@@ -13,6 +13,8 @@ pub enum Stmt{
     /// 第二个Expr表示的是获取索引的表达式
     /// 第三个Expr表示的是对索引处的赋值
     IndexAssign(Box<Expr>,Box<Expr>,Box<Expr>,Position),
+    Break(Position),
+    Continue(Position),
     Import(String,Position),
     Noop
 }
@@ -61,6 +63,7 @@ impl Stmt{
     }
     pub fn position(&self)->Position{
         match self {
+            Stmt::Continue(pos)=>pos.clone(),
             Stmt::FnCall(_, pos) => {
                 pos.clone()
             }
@@ -86,6 +89,7 @@ impl Stmt{
             Stmt::Noop => {
                 NONE.clone()
             }
+            Stmt::Break(pos)=>pos.clone()
         }
     }
 }

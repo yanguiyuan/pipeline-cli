@@ -29,11 +29,17 @@ pub struct Struct{
     name:String,
     props:HashMap<String,Value>
 }
+#[derive(Clone, Debug)]
+pub enum SignalType{
+    Break,
+    Continue
+}
 #[derive(Debug,Clone)]
 pub enum Value{
     Immutable(Dynamic),
     Mutable(Arc<RwLock<Dynamic>>),
-    Refer(Weak<RwLock<Dynamic>>)
+    Refer(Weak<RwLock<Dynamic>>),
+    Signal(SignalType)
 }
 
 impl Value {
@@ -85,6 +91,7 @@ impl Value {
             Value::Refer(r)=>{
                 r.upgrade().unwrap().read().unwrap().clone()
             }
+            _=>panic!("signal cannot as dynamic")
         }
     }
     pub fn get_mut_arc(&self)->Arc<RwLock<Dynamic>>{
@@ -96,6 +103,7 @@ impl Value {
             Value::Refer(r)=>{
                r.upgrade().unwrap()
             }
+            _=>panic!("signal cannot as mut arc")
         }
     }
     pub fn as_arc(&self)->Arc<RwLock<Dynamic>>{
@@ -107,6 +115,7 @@ impl Value {
             Value::Refer(r)=>{
                 r.upgrade().unwrap()
             }
+            _=>panic!("signal cannot as arc")
         }
     }
     pub fn as_weak(&self)->Weak<RwLock<Dynamic>>{
@@ -115,7 +124,8 @@ impl Value {
             Value::Mutable( d) => {
                 Arc::downgrade(d)
             }
-            Value::Refer(r)=>r.clone()
+            Value::Refer(r)=>r.clone(),
+            _=>panic!("signal cannot as weak")
         }
     }
 }

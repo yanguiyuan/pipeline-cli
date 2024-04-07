@@ -318,10 +318,10 @@ impl Lexer{
     }
     pub fn from_path(path:impl AsRef<str>) ->Self{
         let script=fs::read_to_string(path.as_ref()).unwrap();
-        return Self{  chars: script.chars().collect(), index: 0, col: 0, row: 0, keywords: vec!["let","fn","fun","return","if","while","import","else","val","var"] }
+        return Self{  chars: script.chars().collect(), index: 0, col: 0, row: 0, keywords: vec!["let","fn","fun","return","if","while","import","else","val","var","break","continue"] }
     }
     pub fn from_script(script:impl AsRef<str>)->Self{
-        return Self{  chars: script.as_ref().chars().collect(), index: 0, col: 0, row: 0, keywords: vec!["let","fn","fun","return","if","while","import","else","val","var"] }
+        return Self{  chars: script.as_ref().chars().collect(), index: 0, col: 0, row: 0, keywords: vec!["let","fn","fun","return","if","while","import","else","val","var","break","continue"] }
     }
 
 }
