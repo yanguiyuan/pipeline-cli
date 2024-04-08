@@ -4,7 +4,7 @@ use crate::context::{Context, EmptyContext};
 use crate::context::PipelineContextValue;
 use crate::engine::{PipelineEngine};
 use crate::error::{PipelineError, PipelineResult};
-use crate::module::{ Module};
+use crate::module::{Function, Module};
 use crate::v1::expr::{Expr, FnCallExpr, Op};
 use crate::v1::stmt::Stmt;
 use crate::v1::types::{Dynamic, SignalType, Struct, Value};
@@ -160,14 +160,23 @@ impl Interpreter{
                     }
                 }
             }
-            Stmt::ForIn(it_name, target, blocks, ..)=> {
+            Stmt::ForIn(one,other ,target, blocks, ..)=> {
                 let target = self.eval_expr(ctx.clone(), *target.clone())?;
                 let target = target.as_dynamic().as_array().unwrap();
-
+                let mut count=0;
                 'outer:for i in target{
                     let scope=PipelineEngine::context_with_scope(&ctx);
                     let mut scope=scope.write().unwrap();
-                    scope.set(it_name.as_str(),i);
+                    match other.clone() {
+                        None => {
+                            scope.set(one.as_str(),i);
+                        }
+                        Some(s) => {
+                            scope.set(one.as_str(),count.into());
+                            count+=1;
+                            scope.set(s.as_str(),i);
+                        }
+                    }
                     drop(scope);
                     'inner: for i in &*blocks {
                         let r = self.eval_stmt_with_context(ctx.clone(), i.clone())?;
@@ -398,6 +407,7 @@ impl Interpreter{
             }
             v.push(d);
         }
+        let fist_param_type=v[0].as_dynamic().type_name();
         let ctx=PipelineEngine::with_value(ctx,"$shared_module",PipelineContextValue::SharedModule(self.main_module.clone()));
         let ctx=PipelineEngine::with_value(ctx,"$modules",PipelineContextValue::Modules(Arc::new(RwLock::new(self.modules.clone()))));
         let mut r=None;
@@ -415,7 +425,18 @@ impl Interpreter{
                 }
             }
         }else{
-            r=self.main_module.read().unwrap().get_function(f.name.clone());
+            let class_function_result=self.main_module.read().unwrap().get_class_function(&fist_param_type,f.name.as_str());
+            match class_function_result {
+                None => {
+                    r=self.main_module.read().unwrap().get_function(f.name.clone());
+                }
+                Some(class_function) => {
+                    let scope=PipelineEngine::context_with_scope(&ctx);
+                    let mut scope=scope.write().unwrap();
+                    scope.set("this",v[0].clone());
+                    r=Some(class_function)
+                }
+            }
         }
         return match r {
             None => { Err(PipelineError::FunctionUndefined(f.name)) }

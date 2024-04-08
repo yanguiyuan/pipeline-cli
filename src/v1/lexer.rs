@@ -325,7 +325,7 @@ impl Lexer{
                 "return","if","while",
                 "import","else","val","var",
                 "break","continue",
-                "for","in"
+                "for","in","class"
             ]
         }
     }
@@ -339,7 +339,7 @@ impl Lexer{
                 "return","if","while",
                 "import","else","val","var",
                 "break","continue",
-                "for","in"
+                "for","in","class"
             ]
         }
     }

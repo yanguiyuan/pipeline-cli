@@ -514,7 +514,7 @@ impl Dynamic{
                 "Uint".into()
             }
             Dynamic::Integer(_) => {
-                "Integer".into()
+                "Int".into()
             }
             Dynamic::Float(_) => {
                 "Float".into()
@@ -541,7 +541,7 @@ impl Dynamic{
                 "Native".into()
             }
             Dynamic::Struct(s)=>{
-                format!("Struct {}",s.name).into()
+                s.name.clone()
             }
         }
     }

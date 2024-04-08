@@ -17,7 +17,7 @@ use crate::error::{PipelineError, PipelineResult};
 use crate::v1;
 use crate::v1::interpreter::Interpreter;
 
-use crate::v1::parser::FnDef;
+use crate::v1::parser::{FnDef, VariableDeclaration};
 use crate::v1::types::{Dynamic, Value};
 
 trait NativeFunction<Marker>{
@@ -32,7 +32,8 @@ type PipeFn= dyn Send+Sync+ Fn(Arc<RwLock<dyn Context<PipelineContextValue>>>, V
 #[derive(Clone)]
 pub enum Function{
     Native(Arc<PipeFn>),
-    Script(Box<FnDef>)
+    Script(Box<FnDef>),
+    Method(Box<FnDef>),
 }
 impl Debug for Function{
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -43,6 +44,9 @@ impl Debug for Function{
             Function::Script(s) => {
                 write!(f,"{s:?}")
             }
+            Function::Method(m)=>{
+                write!(f,"{m:?}")
+            }
         }
 
     }
@@ -50,9 +54,29 @@ impl Debug for Function{
 #[derive(Clone,Debug)]
 pub struct Module{
     name:String,
-    functions:HashMap<String,Function>
+    functions:HashMap<String,Function>,
+    classes:HashMap<String,Class>
+}
+#[derive(Clone,Debug)]
+pub struct Class{
+    name:String,
+    attributions:Vec<VariableDeclaration>,
+    methods:HashMap<String,Function>
 }
 
+impl Class {
+    pub fn new(name:String,attributions:Vec<VariableDeclaration>)->Self{
+        Self{
+            name,attributions,methods:HashMap::new()
+        }
+    }
+    pub fn get_name(&self)->String{
+        self.name.clone()
+    }
+    pub fn register_method(&mut self,name:String,method:Function){
+        self.methods.insert(name,method);
+    }
+}
 impl Function {
     pub fn call(&self, ctx:Arc<RwLock<dyn Context<PipelineContextValue>>>,  args:Vec<Value>) ->PipelineResult<Value>{
         match self {
@@ -79,6 +103,26 @@ impl Function {
                 drop(scope);
                 e.eval_stmt_blocks_from_ast_with_context(ctx,s.body.clone())
             }
+            Function::Method(s) => {
+                let mut e=PipelineEngine::default_with_pipeline();
+                let share_module=PipelineEngine::context_with_shared_module(&ctx);
+                let modules=PipelineEngine::context_with_modules(&ctx);
+                let modules=modules.write().unwrap();
+                let mut i=Interpreter::with_shared_module(share_module);
+                for m in modules.iter(){
+                    i.register_module(m.0.clone(),m.1.clone());
+                }
+                e.set_interpreter(&i);
+                let scope=PipelineEngine::context_with_scope(&ctx);
+                let mut scope=scope.write().unwrap();
+                let mut i=0;
+                for a in s.args.iter(){
+                    scope.set(a.name.as_str(),args.get(i+1).unwrap().clone());
+                    i+=1;
+                }
+                drop(scope);
+                e.eval_stmt_blocks_from_ast_with_context(ctx,s.body.clone())
+            }
         }
     }
 }
@@ -87,7 +131,29 @@ impl Module{
         Self{
             name:name.into(),
             functions:HashMap::new(),
+            classes:HashMap::new(),
         }
+    }
+    pub fn get_classes(&self)->&HashMap<String,Class>{
+        &self.classes
+    }
+    pub fn get_class_function(&self,class_name:&str,function_name:&str)->Option<Function>{
+        let class_result=self.classes.get(class_name);
+        return match class_result {
+            None => None,
+            Some(class) => {
+                let function_result = class.methods.get(function_name);
+                match function_result {
+                    None => None,
+                    Some(f) => {
+                        Some(f.clone())
+                    }
+                }
+            }
+        }
+    }
+    pub fn register_class(&mut self,class:Class){
+        self.classes.insert(class.name.clone(),class);
     }
     pub fn get_name(&self)->String{
         return self.name.clone()
@@ -97,6 +163,9 @@ impl Module{
             if !self.functions.contains_key(k){
                 self.functions.insert(k.clone(),v.clone());
             }
+        }
+        for (name,class) in &module.classes{
+            self.classes.insert(name.clone(),class.clone());
         }
     }
     pub fn with_std_module()->Self{
@@ -332,6 +401,7 @@ impl Module{
             move_file(ctx,source.as_str(),target.as_str());
             return Ok(().into())
         });
+        std.register_class(Class::new("Int".into(),vec![]));
         return std
     }
     pub fn with_math_module()->Self{

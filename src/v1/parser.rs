@@ -6,7 +6,7 @@ use std::process::id;
 use scanner_rust::generic_array::typenum::Exp;
 use crate::error::{PipelineError, PipelineResult};
 use crate::error::PipelineError::UnknownModule;
-use crate::module::Module;
+use crate::module::{Class, Function, Module};
 use crate::v1::lexer::{Lexer, TokenStream};
 use crate::v1::stmt::{IfBranchStmt, IfStmt, Stmt};
 
@@ -19,11 +19,18 @@ use crate::v1::position::{NONE, Position};
 pub struct PipelineParser{
     token_stream: TokenStream,
     fn_lib:Vec<FnDef>,
-    modules:Vec<Module>
+    modules:Vec<Module>,
+    classes:HashMap<String,Class>
 }
 impl PipelineParser{
     pub fn new()->Self{
-        Self{token_stream:TokenStream::new(),fn_lib:vec![],modules:vec![]}
+        Self{token_stream:TokenStream::new(),fn_lib:vec![],modules:vec![],classes:HashMap::new()}
+    }
+    pub fn register_predefined_class(&mut self,class:Class){
+        self.classes.insert(class.get_name(),class);
+    }
+    pub fn get_classes(&self)->&HashMap<String,Class>{
+        &self.classes
     }
     pub fn set_lexer(&mut self,lexer: Lexer){
         self.token_stream.set_lexer(lexer)
@@ -60,9 +67,13 @@ impl PipelineParser{
                         "let"|"var"|"val"=>{
                             return self.parse_let_stmt()
                         }
-                        "fn"|"fun"=>{
+                        "fn"=>{
                             let (fn_def,pos)=self.parse_fn_def()?;
                             self.fn_lib.push(fn_def);
+                            continue
+                        }
+                        "fun"=>{
+                            self.parse_function()?;
                             continue
                         }
                         "return"=>{
@@ -88,6 +99,10 @@ impl PipelineParser{
                         "for"=>{
                             self.parse_for_loop()
                         }
+                        "class"=>{
+                            self.parse_class();
+                            continue
+                        }
                         t=>Err(PipelineError::UnusedKeyword(t.into()))
                     }
                 },
@@ -100,13 +115,67 @@ impl PipelineParser{
         }
 
     }
+    pub fn parse_class(&mut self)->PipelineResult<()>{
+        self.parse_keyword("class")?;
+        let (class_name,class_name_pos)=self.parse_identifier()?;
+        let mut pos=class_name_pos.clone();
+        self.parse_special_token(Token::ParenthesisLeft)?;
+        let mut attributions=vec![];
+        loop{
+            let (peek_token,peek_pos)=self.token_stream.peek();
+            match peek_token {
+                Token::ParenthesisRight=>{
+                    break
+                }
+                Token::Comma=>{
+                    self.token_stream.next();
+                    pos.add_span(1)
+                }
+                _=>{
+                    let (attribution_name,attribution_name_pos)=self.parse_identifier()?;
+                    self.parse_special_token(Token::Colon)?;
+                    let (attribution_type,attribution_type_pos)=self.parse_identifier()?;
+                    pos.add_span(attribution_name_pos.span+attribution_type_pos.span+1);
+                    attributions.push(VariableDeclaration::new(attribution_name,attribution_type));
+                }
+            }
+        }
+        self.parse_special_token(Token::ParenthesisRight)?;
+        let class_declaration=Class::new(class_name.clone(),attributions);
+        self.classes.insert(class_name,class_declaration);
+        Ok(())
+    }
+    fn parse_keyword(&mut self,target:&str)->PipelineResult<(String,Position)>{
+        let (next,pos)=self.token_stream.next();
+        if let Token::Keyword(keyword)=next{
+            return Ok((keyword,pos))
+        }
+        return Err(PipelineError::UnexpectedToken(next))
+    }
+    fn parse_identifier(&mut self)->PipelineResult<(String,Position)>{
+        let (next,pos)=self.token_stream.next();
+        if let Token::Identifier(identifier)=next{
+            return Ok((identifier,pos))
+        }
+        return Err(PipelineError::UnexpectedToken(next))
+    }
     pub fn parse_for_loop(&mut self)->PipelineResult<Stmt>{
         let (ret,mut pos)=self.token_stream.next();
         if let Token::Keyword(s)=ret.clone(){
             if s!="for"{
                 return Err(PipelineError::UnusedKeyword(s));
             }
-            let (it_name,pos1)=self.token_stream.next();
+            let (one,pos1)=self.token_stream.next();
+            let (peek,pos11)=self.token_stream.peek();
+            let mut other=None;
+            match peek {
+                Token::Comma=>{
+                    self.token_stream.next();
+                    let (two,pos1)=self.token_stream.next();
+                    other=Some(two.get_identifier_value().to_string())
+                }
+                _=>{}
+            }
             let (in_token,mut pos2)=self.token_stream.next();
             if let Token::Keyword(s0)=in_token{
                 if s0!="in"{
@@ -120,7 +189,7 @@ impl PipelineParser{
                 for p in &blocks{
                     pos.add_span(p.position().span);
                 }
-                return Ok(Stmt::ForIn(it_name.get_identifier_value().to_string(),Box::new(expr),Box::new(blocks),pos))
+                return Ok(Stmt::ForIn(one.get_identifier_value().to_string(),other,Box::new(expr),Box::new(blocks),pos))
             }
         }
         return Err(PipelineError::UnexpectedToken(ret));
@@ -298,13 +367,50 @@ impl PipelineParser{
                     }
                     self.parse_special_token(Token::ParenthesisRight)?;
                     pos.add_span(1);
-                    return Ok((FnDef::new(ident,dec_args,stmts),pos))
+                    return Ok((FnDef::new(ident,dec_args,stmts,"Any".into()),pos))
                 }
                 return Err(PipelineError::UnexpectedToken(next1))
             },
             _=>{
                 Err(PipelineError::UnexpectedToken(next))
             }
+        }
+    }
+    pub fn parse_function(&mut self)->PipelineResult<()>{
+        self.parse_keyword("fun")?;
+        let (one_name,one_name_pos)=self.parse_identifier()?;
+        let b=self.try_parse_special_token(Token::Dot);
+        if b{
+            let (two_name,two_name_pos)=self.parse_identifier()?;
+            let (function_params,function_params_pos)=self.parse_fn_def_args()?;
+            self.parse_special_token(Token::Colon)?;
+            let (return_type,return_type_pos)=self.parse_identifier()?;
+            self.parse_special_token(Token::ParenthesisLeft)?;
+            let stmts=self.parse_stmt_blocks()?;
+            self.parse_special_token(Token::ParenthesisRight)?;
+            let function=Function::Method(Box::new(FnDef::new(two_name.clone(),function_params,stmts,return_type)));
+            let class=self.classes.get_mut(&one_name).unwrap();
+            class.register_method(two_name,function);
+            return Ok(())
+        }
+        let (function_params,function_params_pos)=self.parse_fn_def_args()?;
+        self.parse_special_token(Token::Colon)?;
+        let (return_type,return_type_pos)=self.parse_identifier()?;
+        self.parse_special_token(Token::ParenthesisLeft)?;
+        let stmts=self.parse_stmt_blocks()?;
+        self.parse_special_token(Token::ParenthesisRight)?;
+        let function_def=FnDef::new(one_name.clone(),function_params,stmts,return_type);
+        self.fn_lib.push(function_def);
+        return Ok(())
+    }
+    pub fn try_parse_special_token(&mut self,target:Token)->bool{
+        let (token,pos)=self.token_stream.peek();
+        match token {
+            t if t.token_id()==target.token_id()=>{
+                self.token_stream.next();
+                return true
+            }
+            _=>false
         }
     }
     pub fn parse_fn_def_args(&mut self)->PipelineResult<(Vec<VariableDeclaration>,Position)>{
@@ -496,7 +602,7 @@ impl PipelineParser{
                 for stmt in &blocks{
                     pos1.add_span(stmt.position().span)
                 }
-                let fn_def=FnDef::new("".to_string(),vec![],blocks);
+                let fn_def=FnDef::new("".to_string(),vec![],blocks,"Any".into());
                 pos1.add_span(1);
                 p.add_span(pos1.span);
                 v.push(Expr::FnClosure(FnClosureExpr { def: fn_def },pos1));
@@ -991,7 +1097,7 @@ impl PipelineParser{
     }
     #[allow(unused)]
     pub fn from_token_stream(token_stream:TokenStream)->Self{
-        return Self{ token_stream,fn_lib:vec![],modules:vec![] }
+        return Self{ token_stream,fn_lib:vec![],modules:vec![],classes:HashMap::new() }
     }
 
 }
@@ -1014,12 +1120,13 @@ impl VariableDeclaration {
 #[derive(Debug,Clone)]
 pub struct FnDef{
     pub name:String,
+    pub return_type:String,
     pub args:Vec<VariableDeclaration>,
     pub body:Vec<Stmt>
 }
 
 impl FnDef {
-    pub fn new(name:String,args:Vec<VariableDeclaration>,body:Vec<Stmt>)->Self{
-        Self{name,args,body}
+    pub fn new(name:String,args:Vec<VariableDeclaration>,body:Vec<Stmt>,return_type:String)->Self{
+        Self{name,args,body,return_type}
     }
 }

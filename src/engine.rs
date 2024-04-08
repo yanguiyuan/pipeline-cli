@@ -181,7 +181,15 @@ impl PipelineEngine{
     pub fn compile_stmt_blocks(&mut self,script:impl AsRef<str>)->PipelineResult<Vec<Stmt>>{
         let lexer=Lexer::from_script(script);
         self.parser.set_lexer(lexer);
+        for (_,class) in self.interpreter.main_module.read().unwrap().get_classes(){
+            self.parser.register_predefined_class(class.clone());
+        }
         let stmts=self.parser.parse_stmt_blocks()?;
+        let classes=self.parser.get_classes();
+        for (_,class) in classes{
+            self.interpreter.main_module.write().unwrap().register_class(class.clone())
+        }
+        // println!("{:#?}",classes);
         self.fn_lib=self.parser.get_fn_lib();
         let m=self.parser.get_modules();
         for m0 in m{
@@ -192,10 +200,6 @@ impl PipelineEngine{
         }
         return Ok(stmts)
     }
-    // #[allow(unused)]
-    // pub fn register_fn(&mut self,name:&str,func:EvalFn){
-    //     self.interpreter.register_fn(name,func)
-    // }
     #[allow(unused)]
     pub  fn eval_stmt_from_ast(&mut self,stmt:Stmt)->PipelineResult<()>{
         self.interpreter.eval_stmt(stmt).unwrap();
