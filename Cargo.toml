@@ -1,6 +1,6 @@
 [package]
 name = "pipeline-cli"
-version = "0.11.0"
+version = "0.11.1"
 edition = "2021"
 authors = ["yanguiyuan 2736635687@qq.com"]
 description = "A build tools written by rust to build project and execute a serials of task."

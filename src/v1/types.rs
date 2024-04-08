@@ -523,7 +523,7 @@ impl Dynamic{
                 "String".into()
             }
             Dynamic::Boolean(_) => {
-                "Boolean".into()
+                "Bool".into()
             }
             Dynamic::Variable(_) => {
                 "Variable".into()

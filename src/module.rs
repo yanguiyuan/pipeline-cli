@@ -402,6 +402,11 @@ impl Module{
             return Ok(().into())
         });
         std.register_class(Class::new("Int".into(),vec![]));
+        std.register_class(Class::new("Float".into(),vec![]));
+        std.register_class(Class::new("String".into(),vec![]));
+        std.register_class(Class::new("Array".into(),vec![]));
+        std.register_class(Class::new("Map".into(),vec![]));
+        std.register_class(Class::new("Bool".into(),vec![]));
         return std
     }
     pub fn with_math_module()->Self{
