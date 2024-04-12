@@ -167,9 +167,11 @@ fn cli(){
             }
             let mut engine=PipelineEngine::default_with_pipeline();
             let math=Module::with_math_module();
-            let layout=Module::with_layout_module();
             engine.register_module(math);
+            let layout=Module::with_layout_module();
             engine.register_module(layout);
+            let ssh=Module::with_ssh_module();
+            engine.register_module(ssh);
             let script=fs::read_to_string("pipeline.kts").unwrap();
             let stmt=engine.compile_stmt_blocks(script.clone());
             // println!("{:#?}",stmt);

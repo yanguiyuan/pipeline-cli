@@ -32,90 +32,90 @@ pub fn cmd(command:&str, ctx:Arc<RwLock<dyn Context<PipelineContextValue>>>)->Pi
         .current_dir(workspace.as_str())
         .envs(env.iter())
         .args(&[c, command])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
+        // .stdout(Stdio::piped())
+        // .stderr(Stdio::piped())
         .spawn() // 执行命令，并获取输出结果
         .expect("执行命令失败");
-    let flag1=is_system_gbk_output_command(command);
-    let flag2=is_system_gbk_err_command(command);
-    let mut stdout =child.stdout.take().expect("Can not get stderr.");
-    let mut stderr =child.stderr.take().expect("Can not get stderr.");
-    let join_set=PipelineEngine::context_with_join_set(&ctx,"op_join_set");
-    let mut join_set =join_set.write().unwrap();
-    let clone=ctx.clone();
-    let handle=thread::spawn(move||{
-        let ctx=clone.clone();
-        let mut binding = PipelineEngine::context_with_logger(&ctx, "logger");
-        let  logger=binding.as_logger().unwrap();
-        let mut buffer = [0; 1];
-        let mut bytes =vec![];
-        while let Ok(size)=stdout.read(&mut buffer){
-            if size<=0{
-                break
-            }
-            //如果最后一个字节是中文的第一个字节
-            if buffer[0]== u8::try_from('\n').unwrap(){
-                if flag1{
-                    let (cow, _encoding_used, had_errors) = GBK.decode(bytes.as_slice());
-                    if had_errors {
-                        // 如果出现解码错误，可以按照需要进行处理
-                        logger.write().unwrap().task_err(&ctx,String::from_utf8(bytes.clone()).unwrap().as_str());
-                    }
-                    for line in cow.lines() {
-                        logger.write().unwrap().task_out(&ctx,line);
-                    }
-                }else{
-                    logger.write().unwrap().task_out(&ctx,String::from_utf8(bytes.clone()).unwrap().as_str());
-                }
-
-                bytes.clear();
-            }else{
-                bytes.append(&mut buffer.to_vec());
-            }
-
-        }
-        if bytes.len()!=0&&String::from_utf8(bytes.clone()).unwrap()!="\n"{
-            logger.write().unwrap().task_out(&ctx,String::from_utf8(bytes.clone()).unwrap().as_str());
-        }
-        return Ok(())
-    });
-    join_set.push(handle);
-    let handle=thread::spawn(move||{
-        let binding = PipelineEngine::context_with_logger(&ctx, "logger");
-        let  logger=binding.as_logger().unwrap();
-        let mut buffer = [0; 1];
-        let mut bytes =vec![];
-        while let Ok(size)=stderr.read(&mut buffer){
-            if size<=0{
-                break
-            }
-            //如果最后一个字节是中文的第一个字节
-            if buffer[0]== u8::try_from('\n').unwrap() {
-                if flag2 {
-                    let (cow, _encoding_used, had_errors) = GBK.decode(bytes.as_slice());
-
-                    if had_errors {
-                        logger.write().unwrap().task_err(&ctx,String::from_utf8(bytes.clone()).unwrap().as_str());
-                    }
-
-                    for line in cow.lines() {
-                        logger.write().unwrap().task_err(&ctx,line);
-                    }
-                }else {
-                    logger.write().unwrap().task_err(&ctx,String::from_utf8(bytes.clone()).unwrap().as_str());
-                }
-                bytes.clear();
-            }else{
-                bytes.append(&mut buffer.to_vec());
-            }
-
-        }
-        if bytes.len()!=0{
-            logger.write().unwrap().task_err(&ctx,String::from_utf8(bytes.clone()).unwrap().as_str());
-        }
-        return Ok(())
-    });
-    join_set.push(handle);
+    // let flag1=is_system_gbk_output_command(command);
+    // let flag2=is_system_gbk_err_command(command);
+    // let mut stdout =child.stdout.take().expect("Can not get stderr.");
+    // let mut stderr =child.stderr.take().expect("Can not get stderr.");
+    // let join_set=PipelineEngine::context_with_join_set(&ctx,"op_join_set");
+    // let mut join_set =join_set.write().unwrap();
+    // let clone=ctx.clone();
+    // let handle=thread::spawn(move||{
+    //     let ctx=clone.clone();
+    //     let mut binding = PipelineEngine::context_with_logger(&ctx, "logger");
+    //     let  logger=binding.as_logger().unwrap();
+    //     let mut buffer = [0; 1];
+    //     let mut bytes =vec![];
+    //     while let Ok(size)=stdout.read(&mut buffer){
+    //         if size<=0{
+    //             break
+    //         }
+    //         //如果最后一个字节是中文的第一个字节
+    //         if buffer[0]== u8::try_from('\n').unwrap(){
+    //             if flag1{
+    //                 let (cow, _encoding_used, had_errors) = GBK.decode(bytes.as_slice());
+    //                 if had_errors {
+    //                     // 如果出现解码错误，可以按照需要进行处理
+    //                     logger.write().unwrap().task_err(&ctx,String::from_utf8(bytes.clone()).unwrap().as_str());
+    //                 }
+    //                 for line in cow.lines() {
+    //                     logger.write().unwrap().task_out(&ctx,line);
+    //                 }
+    //             }else{
+    //                 logger.write().unwrap().task_out(&ctx,String::from_utf8(bytes.clone()).unwrap().as_str());
+    //             }
+    //
+    //             bytes.clear();
+    //         }else{
+    //             bytes.append(&mut buffer.to_vec());
+    //         }
+    //
+    //     }
+    //     if bytes.len()!=0&&String::from_utf8(bytes.clone()).unwrap()!="\n"{
+    //         logger.write().unwrap().task_out(&ctx,String::from_utf8(bytes.clone()).unwrap().as_str());
+    //     }
+    //     return Ok(())
+    // });
+    // join_set.push(handle);
+    // let handle=thread::spawn(move||{
+    //     let binding = PipelineEngine::context_with_logger(&ctx, "logger");
+    //     let  logger=binding.as_logger().unwrap();
+    //     let mut buffer = [0; 1];
+    //     let mut bytes =vec![];
+    //     while let Ok(size)=stderr.read(&mut buffer){
+    //         if size<=0{
+    //             break
+    //         }
+    //         //如果最后一个字节是中文的第一个字节
+    //         if buffer[0]== u8::try_from('\n').unwrap() {
+    //             if flag2 {
+    //                 let (cow, _encoding_used, had_errors) = GBK.decode(bytes.as_slice());
+    //
+    //                 if had_errors {
+    //                     logger.write().unwrap().task_err(&ctx,String::from_utf8(bytes.clone()).unwrap().as_str());
+    //                 }
+    //
+    //                 for line in cow.lines() {
+    //                     logger.write().unwrap().task_err(&ctx,line);
+    //                 }
+    //             }else {
+    //                 logger.write().unwrap().task_err(&ctx,String::from_utf8(bytes.clone()).unwrap().as_str());
+    //             }
+    //             bytes.clear();
+    //         }else{
+    //             bytes.append(&mut buffer.to_vec());
+    //         }
+    //
+    //     }
+    //     if bytes.len()!=0{
+    //         logger.write().unwrap().task_err(&ctx,String::from_utf8(bytes.clone()).unwrap().as_str());
+    //     }
+    //     return Ok(())
+    // });
+    // join_set.push(handle);
 
     let _ = child.wait().expect("Failed to wait for command execution");
     return Ok(().into())

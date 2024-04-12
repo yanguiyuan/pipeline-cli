@@ -15,15 +15,9 @@ val p=Pair{
 let c="123"
 val a=p.first()
 println(a)*/
-class JVMObject{
-    name:String
-}
-fun JVMObject.version(n:Int):Unit{
-    println(this.name,":",n)
-}
-fun jvm(name:String):JVMObject{
-    return JVMObject{
-        name:name
+import pipe
+pipeline("test"){
+    step("t1"){
+        cmd("ls")
     }
 }
-jvm("kotlin").version(17)

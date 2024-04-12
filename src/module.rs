@@ -4,12 +4,14 @@ use std::fmt::{Debug, Formatter};
 use std::{fs, io, ptr, thread};
 use std::fs::File;
 use std::io::{Stdin, Write};
+use std::net::TcpStream;
 use std::path::{Path, PathBuf};
 use std::process::exit;
 use std::sync::{Arc, RwLock};
 use rand::{random, Rng};
 use regex::Regex;
 use scanner_rust::Scanner;
+use ssh::LocalSession;
 use crate::builtin::{cmd, copy, move_file, replace};
 use crate::context::{Context, PipelineContextValue};
 use crate::engine::{PipelineEngine};
@@ -18,7 +20,7 @@ use crate::v1;
 use crate::v1::interpreter::Interpreter;
 
 use crate::v1::parser::{FnDef, VariableDeclaration};
-use crate::v1::types::{Dynamic, Value};
+use crate::v1::types::{Dynamic, Struct, Value};
 
 trait NativeFunction<Marker>{
     fn into_pipe_function(self) ->Arc<PipeFn>;
@@ -508,6 +510,85 @@ impl Module{
             Ok(().into())
         });
         return pipe
+    }
+    pub fn with_ssh_module()->Self{
+        let mut ssh=Module::new("ssh");
+        ssh.register_pipe_function("withContext",|ctx,args|{
+            let user=args.get(0).unwrap().as_string().unwrap();
+            let password=args.get(1).unwrap().as_string().unwrap();
+            let host=args.get(2).unwrap().as_string().unwrap();
+            // let mut session = ssh::create_session()
+            //     .username(user.as_str())
+            //     .password(password.as_str())
+            //     .private_key_path("./id_rsa")
+            //     .connect(host.as_str())
+            //     .unwrap()
+            //     .run_local();
+            let mut props=HashMap::new();
+            props.insert("user".into(),user.into());
+            props.insert("password".into(),password.into());
+            props.insert("host".into(),host.into());
+            let obj=Dynamic::Struct(Box::new(Struct::new("SSHContext".into(),props)));
+            Ok(Value::Immutable(obj))
+        });
+        ssh.register_pipe_function("exec",|ctx,args|{
+            let ssh_ctx=args.get(0).unwrap().as_dynamic().as_struct().unwrap();
+            let user=ssh_ctx.get_prop("user").unwrap().as_string().unwrap();
+            let password=ssh_ctx.get_prop("password").unwrap().as_string().unwrap();
+            let host=ssh_ctx.get_prop("host").unwrap().as_string().unwrap();
+            let mut session = ssh::create_session()
+                .username(user.as_str())
+                .password(password.as_str())
+                .private_key_path("./id_rsa")
+                .connect(host.as_str())
+                .unwrap()
+                .run_local();
+            let exec=session.open_exec().unwrap();
+            let cmd=args.get(1).unwrap().as_string().unwrap();
+            let res=exec.send_command(cmd.as_str()).unwrap();
+            let s=String::from_utf8(res).unwrap();
+            session.close();
+            Ok(s.into())
+        });
+        ssh.register_pipe_function("upload",|ctx,args|{
+            let ssh_ctx=args.get(0).unwrap().as_dynamic().as_struct().unwrap();
+            let user=ssh_ctx.get_prop("user").unwrap().as_string().unwrap();
+            let password=ssh_ctx.get_prop("password").unwrap().as_string().unwrap();
+            let host=ssh_ctx.get_prop("host").unwrap().as_string().unwrap();
+            let mut session = ssh::create_session()
+                .username(user.as_str())
+                .password(password.as_str())
+                .private_key_path("./id_rsa")
+                .connect(host.as_str())
+                .unwrap()
+                .run_local();
+            let scp=session.open_scp().unwrap();
+            let local=args.get(1).unwrap().as_string().unwrap();
+            let remote=args.get(2).unwrap().as_string().unwrap();
+            scp.upload(local.as_str(),remote.as_str()).unwrap();
+            session.close();
+            Ok(().into())
+        });
+        ssh.register_pipe_function("download",|ctx,args|{
+            let ssh_ctx=args.get(0).unwrap().as_dynamic().as_struct().unwrap();
+            let user=ssh_ctx.get_prop("user").unwrap().as_string().unwrap();
+            let password=ssh_ctx.get_prop("password").unwrap().as_string().unwrap();
+            let host=ssh_ctx.get_prop("host").unwrap().as_string().unwrap();
+            let mut session = ssh::create_session()
+                .username(user.as_str())
+                .password(password.as_str())
+                .private_key_path("./id_rsa")
+                .connect(host.as_str())
+                .unwrap()
+                .run_local();
+            let scp=session.open_scp().unwrap();
+            let local=args.get(1).unwrap().as_string().unwrap();
+            let remote=args.get(2).unwrap().as_string().unwrap();
+            scp.download(local.as_str(),remote.as_str()).unwrap();
+            session.close();
+            Ok(().into())
+        });
+        return ssh
     }
     pub fn with_layout_module()->Self{
         let  mut layout=Module::new("layout");
